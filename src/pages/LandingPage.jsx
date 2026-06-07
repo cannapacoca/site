@@ -77,7 +77,7 @@ export default function LandingPage() {
                     </div>
                     <div style={{ background: '#fff', borderRadius: '20px', padding: '24px', textAlign: 'center', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', border: '1px solid #e2d5c0' }}>
                         <h3 style={{ color: '#f4890f' }}>Valores</h3>
-                        <p>Qualidade, tradição, honestidade e respeito ao cliente.</p>
+                        <p>Qualidade, tradição, honestidade e respeito ao cliente</p>
                     </div>
                 </div>
 
