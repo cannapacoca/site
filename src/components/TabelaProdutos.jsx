@@ -1,15 +1,51 @@
 // src/components/TabelaProdutos.jsx
-import React from 'react';
+import React, { useState } from 'react';
 import { calcularPrecoKgMassa, obterCustoUnitarioItem } from '../utils/pricingUtils';
+import { Trash2, Plus } from 'lucide-react';
 
 export default function TabelaProdutos({ 
   produtosFinais, 
   setProdutosFinais, 
   materiais, 
   receitas,
-  onUpdateProduto   // nova prop
+  onUpdateProduto,
+  onAddProduto,
+  onDeleteProduto
 }) {
+  const [novoProduto, setNovoProduto] = useState({ nome: '', pesoG: 500, receitaId: '', embId: '', rotId: '', imposto: 7.3, venda: 0 });
+  const [showForm, setShowForm] = useState(false);
   
+  const handleAddProduto = async () => {
+    if (!novoProduto.nome || !novoProduto.receitaId) {
+      alert('Preencha pelo menos o nome e a receita do produto.');
+      return;
+    }
+    try {
+      await onAddProduto({
+        ...novoProduto,
+        id: 'p' + Date.now(),
+        pesoG: parseFloat(novoProduto.pesoG) || 500,
+        imposto: parseFloat(novoProduto.imposto) || 7.3,
+        venda: parseFloat(novoProduto.venda) || 0
+      });
+      setNovoProduto({ nome: '', pesoG: 500, receitaId: '', embId: '', rotId: '', imposto: 7.3, venda: 0 });
+      setShowForm(false);
+    } catch (error) {
+      console.error('Erro ao adicionar produto:', error);
+      alert('Erro ao adicionar produto.');
+    }
+  };
+
+  const handleDeleteProduto = async (id) => {
+    if (!window.confirm('Tem certeza que deseja excluir este produto?')) return;
+    try {
+      await onDeleteProduto(id);
+    } catch (error) {
+      console.error('Erro ao excluir produto:', error);
+      alert('Erro ao excluir produto.');
+    }
+  };
+
   const handleUpdate = async (id, field, value) => {
     const novoValor = parseFloat(value) || 0;
     // Salva o valor antigo para possível reversão
@@ -36,6 +72,59 @@ export default function TabelaProdutos({
 
   return (
     <div style={{ overflowX: 'auto' }}>
+      <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'flex-end' }}>
+        <button
+          onClick={() => setShowForm(!showForm)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '8px',
+            padding: '10px 16px', backgroundColor: '#f4890f', color: '#fff',
+            border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold'
+          }}
+        >
+          <Plus size={18} /> Adicionar Produto
+        </button>
+      </div>
+
+      {showForm && (
+        <div style={{ marginBottom: '16px', padding: '16px', backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.85em', marginBottom: '4px', color: '#64748b' }}>Nome</label>
+            <input type="text" value={novoProduto.nome} onChange={e => setNovoProduto({ ...novoProduto, nome: e.target.value })} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', width: '160px' }} />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.85em', marginBottom: '4px', color: '#64748b' }}>Peso (g)</label>
+            <input type="number" value={novoProduto.pesoG} onChange={e => setNovoProduto({ ...novoProduto, pesoG: e.target.value })} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', width: '80px' }} />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.85em', marginBottom: '4px', color: '#64748b' }}>Receita</label>
+            <select value={novoProduto.receitaId} onChange={e => setNovoProduto({ ...novoProduto, receitaId: e.target.value })} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', width: '160px' }}>
+              <option value="">Selecione...</option>
+              {receitas.map(r => <option key={r.id} value={r.id}>{r.nome}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.85em', marginBottom: '4px', color: '#64748b' }}>Embalagem</label>
+            <select value={novoProduto.embId} onChange={e => setNovoProduto({ ...novoProduto, embId: e.target.value })} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', width: '160px' }}>
+              <option value="">Selecione...</option>
+              {materiais.filter(m => m.id.startsWith('emb_')).map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.85em', marginBottom: '4px', color: '#64748b' }}>Rótulo</label>
+            <select value={novoProduto.rotId} onChange={e => setNovoProduto({ ...novoProduto, rotId: e.target.value })} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', width: '160px' }}>
+              <option value="">Selecione...</option>
+              {materiais.filter(m => m.id.startsWith('rot_')).map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
+            </select>
+          </div>
+          <button
+            onClick={handleAddProduto}
+            style={{ padding: '10px 16px', backgroundColor: '#28a745', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', height: '38px' }}
+          >
+            Salvar
+          </button>
+        </div>
+      )}
+
       <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
         <thead>
           <tr style={{ backgroundColor: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
@@ -48,6 +137,7 @@ export default function TabelaProdutos({
             <th style={{ padding: '14px' }}>Imposto (%)</th>
             <th style={{ padding: '14px' }}>Preço Base</th>
             <th style={{ padding: '14px' }}>Lucro Real</th>
+            <th style={{ padding: '14px', width: '50px' }}></th>
           </tr>
         </thead>
         <tbody>
@@ -113,6 +203,15 @@ export default function TabelaProdutos({
                 
                 <td style={{ padding: '14px', fontWeight: 'bold', color: lucroBrutoReal > 0 ? '#28a745' : '#dc3545' }}>
                   R$ {lucroBrutoReal.toFixed(2)}
+                </td>
+                <td style={{ padding: '8px', textAlign: 'center' }}>
+                  <button
+                    onClick={() => handleDeleteProduto(prod.id)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc3545', padding: '4px' }}
+                    title="Excluir produto"
+                  >
+                    <Trash2 size={18} />
+                  </button>
                 </td>
               </tr>
             );

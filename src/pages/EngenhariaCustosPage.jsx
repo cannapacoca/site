@@ -7,7 +7,9 @@ export default function EngenhariaCustosPage({
   setProdutosFinais, 
   materiais, 
   receitas,
-  onUpdateProduto   // nova prop
+  onUpdateProduto,
+  onAddProduto,
+  onDeleteProduto
 }) {
   return (
     <div>
@@ -17,7 +19,9 @@ export default function EngenhariaCustosPage({
         setProdutosFinais={setProdutosFinais} 
         materiais={materiais} 
         receitas={receitas}
-        onUpdateProduto={onUpdateProduto}   
+        onUpdateProduto={onUpdateProduto}
+        onAddProduto={onAddProduto}
+        onDeleteProduto={onDeleteProduto}
       />
     </div>
   );

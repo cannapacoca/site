@@ -1,6 +1,6 @@
 // src/App.jsx
 import React, { useState, useEffect } from 'react';
-import { Users, LayoutDashboard, Menu, X, Archive, AlertCircle, Map, Package, ShoppingCart, LogOut } from 'lucide-react';
+import { Users, LayoutDashboard, Menu, X, Archive, AlertCircle, Map, Package, ShoppingCart, LogOut, BookOpen, Settings } from 'lucide-react';
 import ClientesPage from './pages/ClientesPage';
 import EngenhariaCustosPage from './pages/EngenhariaCustosPage';
 import InsumosPage from './pages/InsumosPage';
@@ -8,10 +8,13 @@ import VendasPage from './pages/VendasPage';
 import EstoquePage from './pages/EstoquePage';
 import DashboardPage from './pages/DashboardPage';
 import Rotas from './pages/Rotas';
+import ReceitasPage from './pages/ReceitasPage';
+import ConfigLandingPage from './pages/ConfigLandingPage';
 import { useAuth } from './contexts/AuthContext';
 import LoginPage from './pages/LoginPage';
 
 import { initialDataService } from './services/initialDataService';
+import { receitasService } from './services/receitasService';
 import { clientesService } from './services/clientesService';
 import { materiaisService } from './services/materiaisService';
 import { produtosService } from './services/produtosService';
@@ -99,6 +102,19 @@ export default function AdminApp() {
     const novo = await clientesService.create(cliente);
     setClientes(prev => [...prev, novo]);
   }
+
+  async function adicionarReceita(receita) {
+    const nova = await receitasService.create(receita);
+    setReceitas(prev => [...prev, nova]);
+  }
+  async function atualizarReceita(id, updates) {
+    const atualizada = await receitasService.update(id, updates);
+    setReceitas(prev => prev.map(r => r.id === id ? atualizada : r));
+  }
+  async function deletarReceita(id) {
+    await receitasService.delete(id);
+    setReceitas(prev => prev.filter(r => r.id !== id));
+  }
   async function atualizarCliente(id, updates) {
     const atualizado = await clientesService.update(id, updates);
     setClientes(prev => prev.map(c => c.id === id ? atualizado : c));
@@ -108,9 +124,29 @@ export default function AdminApp() {
     setClientes(prev => prev.filter(c => c.id !== id));
   }
 
+  async function adicionarMaterial(material) {
+    const novo = await materiaisService.create(material);
+    setMateriais(prev => [...prev, novo]);
+  }
+
+  async function deletarMaterial(id) {
+    await materiaisService.delete(id);
+    setMateriais(prev => prev.filter(m => m.id !== id));
+  }
+
   async function atualizarMaterial(id, updates) {
     const atualizado = await materiaisService.update(id, updates);
     setMateriais(prev => prev.map(m => m.id === id ? atualizado : m));
+  }
+
+  async function adicionarProduto(produto) {
+    const novo = await produtosService.create(produto);
+    setProdutosFinais(prev => [...prev, novo]);
+  }
+
+  async function deletarProduto(id) {
+    await produtosService.delete(id);
+    setProdutosFinais(prev => prev.filter(p => p.id !== id));
   }
 
   async function atualizarProduto(id, updates) {
@@ -202,8 +238,10 @@ export default function AdminApp() {
     { id: 'estoque', name: 'Estoque', icon: <Archive size={20} /> },
     { id: 'eng-custos', name: 'Engenharia de Custos', icon: <Package size={20} /> },
     { id: 'insumos', name: 'Insumos', icon: <Package size={20} /> },
+    { id: 'receitas', name: 'Receitas', icon: <BookOpen size={20} /> },
     { id: 'vendas', name: 'Vendas', icon: <ShoppingCart size={20} /> },
     { id: 'rotas', name: 'Rotas', icon: <Map size={20} /> },
+    { id: 'landing-page', name: 'Editar Landing Page', icon: <Settings size={20} /> },
   ];
 
   if (authLoading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontFamily: 'Gotham, sans-serif' }}>Carregando autenticação...</div>;
@@ -318,10 +356,33 @@ export default function AdminApp() {
           <EstoquePage materiais={materiais} setMateriais={setMateriais} historicoCompras={historicoCompras} onAddCompra={adicionarCompra} onDeleteCompra={deletarCompra} />
         )}
         {currentTab === 'eng-custos' && (
-          <EngenhariaCustosPage produtosFinais={produtosFinais} setProdutosFinais={setProdutosFinais} materiais={materiais} receitas={receitas} onUpdateProduto={atualizarProduto} />
+          <EngenhariaCustosPage 
+            produtosFinais={produtosFinais} 
+            setProdutosFinais={setProdutosFinais} 
+            materiais={materiais} 
+            receitas={receitas} 
+            onUpdateProduto={atualizarProduto}
+            onAddProduto={adicionarProduto}
+            onDeleteProduto={deletarProduto}
+          />
         )}
         {currentTab === 'insumos' && (
-          <InsumosPage materiais={materiais} setMateriais={setMateriais} onUpdateMaterial={atualizarMaterial} />
+          <InsumosPage 
+            materiais={materiais} 
+            setMateriais={setMateriais} 
+            onUpdateMaterial={atualizarMaterial}
+            onAddMaterial={adicionarMaterial}
+            onDeleteMaterial={deletarMaterial}
+          />
+        )}
+        {currentTab === 'receitas' && (
+          <ReceitasPage
+            receitas={receitas}
+            materiais={materiais}
+            onAddReceita={adicionarReceita}
+            onUpdateReceita={atualizarReceita}
+            onDeleteReceita={deletarReceita}
+          />
         )}
         {currentTab === 'vendas' && (
           <VendasPage produtosFinais={produtosFinais} vendasLancadas={vendasLancadas} setVendasLancadas={setVendasLancadas} clientes={clientes} materiais={materiais} receitas={receitas} onAddVenda={adicionarVenda} onDeleteVenda={deletarVenda} />
@@ -342,6 +403,9 @@ export default function AdminApp() {
             onUpdateExcecao={atualizarExcecao}
             onDeleteExcecao={deletarExcecao}
           />
+        )}
+        {currentTab === 'landing-page' && (
+          <ConfigLandingPage />
         )}
       </main>
 
