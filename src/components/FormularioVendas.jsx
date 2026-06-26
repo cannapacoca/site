@@ -1,6 +1,6 @@
 // src/components/FormularioVendas.jsx
 import React, { useState, useEffect } from 'react';
-import { Trash2, ShoppingCart, Check, User, Eye, X } from 'lucide-react';
+import { Trash2, ShoppingCart, Check, User, Eye, X, Edit2 } from 'lucide-react';
 
 export default function FormularioVendas({
   produtosFinais,
@@ -14,14 +14,16 @@ export default function FormularioVendas({
   const [produtosSelecionados, setProdutosSelecionados] = useState({});
   const [novaVenda, setNovaVenda] = useState({
     clienteId: "",
-    emiteNota: true,
-    formaPagamento: "boleto",
+    emiteNota: "",
+    formaPagamento: "",
     dataRecebimento: "",
   });
 
   const [filtroCliente, setFiltroCliente] = useState("");
   const [filtroData, setFiltroData] = useState("");
   const [vendaSelecionada, setVendaSelecionada] = useState(null);
+  const [vendaEmEdicao, setVendaEmEdicao] = useState(null);
+  const [toast, setToast] = useState(null);
 
   const vendasFiltradas = vendasLancadas.filter(v =>
     (filtroCliente === "" || v.clienteId === Number(filtroCliente)) &&
@@ -31,16 +33,11 @@ export default function FormularioVendas({
   useEffect(() => {
     const inicial = {};
     produtosFinais.forEach(prod => {
-      inicial[prod.id] = { checked: false, quantidade: 1, precoCustomizado: '' };
+      inicial[prod.id] = { checked: false, quantidade: '', precoCustomizado: '' };
     });
     setProdutosSelecionados(inicial);
   }, [produtosFinais]);
 
-  useEffect(() => {
-    if (clientes.length > 0 && !novaVenda.clienteId) {
-      handleClienteChange(clientes[0].id);
-    }
-  }, [clientes]);
 
   const handleClienteChange = (id) => {
     const clienteIdFormatado = id ? Number(id) : "";
@@ -68,10 +65,9 @@ export default function FormularioVendas({
   };
 
   const handleQuantidadeChange = (produtoId, quantidade) => {
-    const qtd = parseInt(quantidade) || 1;
     setProdutosSelecionados(prev => ({
       ...prev,
-      [produtoId]: { ...prev[produtoId], quantidade: qtd > 0 ? qtd : 1 }
+      [produtoId]: { ...prev[produtoId], quantidade: quantidade, checked: quantidade && quantidade !== '' }
     }));
   };
 
@@ -85,19 +81,20 @@ export default function FormularioVendas({
   const adicionarSelecionadosAoCarrinho = () => {
     const produtosParaAdicionar = [];
     for (const [produtoId, config] of Object.entries(produtosSelecionados)) {
-      if (config.checked) {
+      const qtd = parseInt(config.quantidade) || 0;
+      if (qtd > 0) {
         const produto = produtosFinais.find(p => p.id === produtoId);
         if (produto) {
           const precoFinal = config.precoCustomizado && config.precoCustomizado !== ''
             ? parseFloat(config.precoCustomizado)
             : produto.venda;
           if (isNaN(precoFinal) || precoFinal <= 0) {
-            alert(`Preço inválido para ${produto.nome}`);
+            mostrarToast(`Preço inválido para ${produto.nome}`, 'error');
             return;
           }
           produtosParaAdicionar.push({
             ...produto,
-            qtd: config.quantidade,
+            qtd: qtd,
             preco: precoFinal,
             precoCustomizadoUsado: !!config.precoCustomizado
           });
@@ -105,35 +102,59 @@ export default function FormularioVendas({
       }
     }
     if (produtosParaAdicionar.length === 0) {
-      alert("Selecione pelo menos um produto.");
+      mostrarToast("Digite a quantidade de pelo menos um produto.", 'error');
       return;
     }
     setCarrinho(prev => [...prev, ...produtosParaAdicionar]);
     const resetSelecoes = {};
     produtosFinais.forEach(prod => {
-      resetSelecoes[prod.id] = { checked: false, quantidade: 1, precoCustomizado: '' };
+      resetSelecoes[prod.id] = { checked: false, quantidade: '', precoCustomizado: '' };
     });
     setProdutosSelecionados(resetSelecoes);
-    alert(`${produtosParaAdicionar.length} produto(s) adicionado(s) ao carrinho.`);
+    mostrarToast(`${produtosParaAdicionar.length} produto(s) adicionado(s) ao carrinho.`, 'success');
   };
 
   const removerItemCarrinho = (index) => {
     setCarrinho(prev => prev.filter((_, i) => i !== index));
   };
 
+  const mostrarToast = (mensagem, tipo = 'success') => {
+    setToast({ mensagem, tipo });
+    setTimeout(() => setToast(null), 3000);
+  };
+
   const handleSalvarVenda = async (e) => {
     e.preventDefault();
     if (!novaVenda.clienteId) {
-      alert("Por favor, selecione um cliente para a venda.");
+      mostrarToast("Por favor, selecione um cliente para a venda.", 'error');
+      return;
+    }
+    if (!novaVenda.emiteNota) {
+      mostrarToast("Por favor, selecione o tipo de documento fiscal.", 'error');
+      return;
+    }
+    if (!novaVenda.formaPagamento) {
+      mostrarToast("Por favor, selecione a condição de pagamento.", 'error');
       return;
     }
     if (carrinho.length === 0) {
-      alert("Adicione pelo menos um produto ao carrinho.");
+      mostrarToast("Adicione pelo menos um produto ao carrinho.", 'error');
       return;
     }
     const clienteSelecionado = clientes.find(c => c.id === novaVenda.clienteId);
     const totalVenda = carrinho.reduce((acc, item) => acc + (item.qtd * Number(item.preco)), 0);
     const custoTotalLote = carrinho.reduce((acc, item) => acc + (item.qtd * obterCustoUnidadeProduto(item)), 0);
+    
+    // Calcular imposto apenas se emitir nota
+    let totalImposto = 0;
+    if (novaVenda.emiteNota === true) {
+      totalImposto = carrinho.reduce((acc, item) => {
+        const produto = produtosFinais.find(p => p.id === item.id);
+        const aliquota = produto?.imposto || 7.3;
+        return acc + (item.qtd * item.preco * (aliquota / 100));
+      }, 0);
+    }
+    
     const novoLancamento = {
       id: `v_${Date.now()}`,
       clienteId: novaVenda.clienteId,
@@ -150,21 +171,21 @@ export default function FormularioVendas({
       })),
       totalVenda,
       custoTotalLote,
-      lucroBrutoTotal: totalVenda - custoTotalLote
+      lucroBrutoTotal: totalVenda - custoTotalLote - totalImposto
     };
     try {
       await onAddVenda(novoLancamento);
       setCarrinho([]);
       setNovaVenda({
-        clienteId: clientes[0]?.id || "",
-        emiteNota: clientes[0]?.emiteNota || true,
-        formaPagamento: clientes[0]?.aVista ? "a_vista" : (clientes[0]?.emissaoBolet ? "boleto" : "boleto"),
+        clienteId: "",
+        emiteNota: true,
+        formaPagamento: "boleto",
         dataRecebimento: "",
       });
-      alert("Venda registrada com sucesso!");
+      mostrarToast("Venda registrada com sucesso!", 'success');
     } catch (error) {
       console.error('Erro ao salvar venda:', error);
-      alert('Erro ao salvar a venda. Verifique o console.');
+      mostrarToast('Erro ao salvar a venda. Verifique o console.', 'error');
     }
   };
 
@@ -172,10 +193,57 @@ export default function FormularioVendas({
     if (window.confirm("Remover este lançamento de venda do histórico?")) {
       try {
         await onDeleteVenda(id);
+        mostrarToast('Venda removida com sucesso!', 'success');
       } catch (error) {
         console.error('Erro ao deletar venda:', error);
-        alert('Erro ao deletar a venda.');
+        mostrarToast('Erro ao deletar a venda.', 'error');
       }
+    }
+  };
+
+  const handleEditarVenda = (venda) => {
+    setVendaEmEdicao(venda);
+  };
+
+  const handleSalvarEdicao = async (e) => {
+    e.preventDefault();
+    if (!vendaEmEdicao) return;
+    
+    const clienteSelecionado = clientes.find(c => c.id === vendaEmEdicao.clienteId);
+    const totalVenda = vendaEmEdicao.itens.reduce((acc, item) => acc + (item.quantidade * item.precoUnitario), 0);
+    const custoTotalLote = vendaEmEdicao.itens.reduce((acc, item) => {
+      const produto = produtosFinais.find(p => p.id === item.produtoId);
+      if (produto) {
+        return acc + (item.quantidade * obterCustoUnidadeProduto(produto));
+      }
+      return acc;
+    }, 0);
+    
+    // Calcular imposto apenas se emitir nota
+    let totalImposto = 0;
+    if (vendaEmEdicao.emiteNota === true) {
+      totalImposto = vendaEmEdicao.itens.reduce((acc, item) => {
+        const produto = produtosFinais.find(p => p.id === item.produtoId);
+        const aliquota = produto?.imposto || 7.3;
+        return acc + (item.quantidade * item.precoUnitario * (aliquota / 100));
+      }, 0);
+    }
+    
+    const vendaAtualizada = {
+      ...vendaEmEdicao,
+      nomeCliente: clienteSelecionado?.razaoSocial,
+      totalVenda,
+      custoTotalLote,
+      lucroBrutoTotal: totalVenda - custoTotalLote - totalImposto
+    };
+    
+    try {
+      await onAddVenda(vendaAtualizada);
+      setVendaEmEdicao(null);
+      mostrarToast('Venda atualizada com sucesso!', 'success');
+    } catch (error) {
+      console.error('Erro ao atualizar venda:', error);
+      mostrarToast('Erro ao atualizar a venda.', 'error');
     }
   };
 
@@ -203,10 +271,11 @@ export default function FormularioVendas({
             <div style={{ width: '140px' }}>
               <label style={labelStyle}>Documento Fiscal</label>
               <select
-                value={novaVenda.emiteNota ? "com_nota" : "sem_nota"}
+                value={novaVenda.emiteNota === true ? "com_nota" : (novaVenda.emiteNota === false ? "sem_nota" : "")}
                 onChange={(e) => setNovaVenda(prev => ({ ...prev, emiteNota: e.target.value === "com_nota" }))}
                 style={inputStyle}
               >
+                <option value="">-- Selecione --</option>
                 <option value="com_nota">Com Nota</option>
                 <option value="sem_nota">Sem Nota</option>
               </select>
@@ -218,6 +287,7 @@ export default function FormularioVendas({
                 onChange={(e) => setNovaVenda(prev => ({ ...prev, formaPagamento: e.target.value }))}
                 style={inputStyle}
               >
+                <option value="">-- Selecione --</option>
                 <option value="boleto">Boleto Próprio</option>
                 <option value="a_vista">À Vista / Pix</option>
                 <option value="a_prazo">À Prazo</option>
@@ -248,23 +318,19 @@ export default function FormularioVendas({
               padding: '16px',
               maxHeight: '300px',
               overflowY: 'auto',
-              background: '#fefcf8'
+              background: '#fefcf8',
+              maxWidth: '600px',
             }}>
               {produtosFinais.map(prod => (
                 <div key={prod.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '8px 4px', borderBottom: '1px solid #f0e6d5', flexWrap: 'wrap' }}>
-                  <input
-                    type="checkbox"
-                    checked={produtosSelecionados[prod.id]?.checked || false}
-                    onChange={(e) => handleCheckboxChange(prod.id, e.target.checked)}
-                    style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#f4890f' }}
-                  />
                   <span style={{ flex: 2, minWidth: '150px', fontWeight: '500', color: '#351000' }}>{prod.nome}</span>
                   <span style={{ flex: 1, minWidth: '80px', color: '#6a2402' }}>R$ {prod.venda.toFixed(2)}</span>
                   <input
                     type="number"
                     step="1"
                     min="1"
-                    value={produtosSelecionados[prod.id]?.quantidade || 1}
+                    placeholder="Qtd"
+                    value={produtosSelecionados[prod.id]?.quantidade || ''}
                     onChange={(e) => handleQuantidadeChange(prod.id, e.target.value)}
                     style={{ width: '80px', padding: '6px 8px', fontSize: '0.85rem', borderRadius: '6px', border: '1px solid #e2d5c0' }}
                   />
@@ -303,6 +369,9 @@ export default function FormularioVendas({
                   </button>
                 </div>
               ))}
+              <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '2px solid #e2d5c0', display: 'flex', justifyContent: 'flex-end', fontSize: '1.1rem', fontWeight: 'bold', color: '#6a2402' }}>
+                Total do Carrinho: R$ {carrinho.reduce((acc, item) => acc + (item.qtd * item.preco), 0).toFixed(2)}
+              </div>
             </div>
           )}
 
@@ -367,6 +436,9 @@ export default function FormularioVendas({
                       <button onClick={() => setVendaSelecionada(v)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#f4890f', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                         <Eye size={16} /> Detalhes
                       </button>
+                      <button onClick={() => handleEditarVenda(v)} style={{ background: 'none', border: 'none', cursor: 'pointer', marginLeft: '12px', color: '#3b82f6' }}>
+                        <Edit2 size={16} />
+                      </button>
                       <button onClick={() => handleDeletarVenda(v.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', marginLeft: '12px', color: '#ef4444' }}>
                         <Trash2 size={16} />
                       </button>
@@ -406,6 +478,132 @@ export default function FormularioVendas({
             </div>
             <button onClick={() => setVendaSelecionada(null)} style={{ backgroundColor: '#f4890f', color: '#fff', border: 'none', borderRadius: '8px', padding: '8px 16px', cursor: 'pointer' }}>Fechar</button>
           </div>
+        </div>
+      )}
+
+      {/* Modal de Edição */}
+      {vendaEmEdicao && (
+        <div style={modalOverlayStyle}>
+          <div style={{ ...modalContentStyle, maxWidth: '700px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ margin: 0, color: '#351000' }}>Editar Venda</h3>
+              <button onClick={() => setVendaEmEdicao(null)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={20} color="#6a2402" /></button>
+            </div>
+            <form onSubmit={handleSalvarEdicao}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', marginBottom: '16px' }}>
+                <div style={{ flex: '1 1 280px' }}>
+                  <label style={labelStyle}>Cliente</label>
+                  <select
+                    value={vendaEmEdicao.clienteId}
+                    onChange={(e) => setVendaEmEdicao(prev => ({ ...prev, clienteId: Number(e.target.value) }))}
+                    style={{ ...inputStyle, fontWeight: '500', backgroundColor: '#fef9f0' }}
+                  >
+                    {clientes.map(c => <option key={c.id} value={c.id}>{c.razaoSocial}</option>)}
+                  </select>
+                </div>
+                <div style={{ width: '140px' }}>
+                  <label style={labelStyle}>Documento Fiscal</label>
+                  <select
+                    value={vendaEmEdicao.emiteNota ? "com_nota" : "sem_nota"}
+                    onChange={(e) => setVendaEmEdicao(prev => ({ ...prev, emiteNota: e.target.value === "com_nota" }))}
+                    style={inputStyle}
+                  >
+                    <option value="com_nota">Com Nota</option>
+                    <option value="sem_nota">Sem Nota</option>
+                  </select>
+                </div>
+                <div style={{ width: '150px' }}>
+                  <label style={labelStyle}>Condição</label>
+                  <select
+                    value={vendaEmEdicao.formaPagamento}
+                    onChange={(e) => setVendaEmEdicao(prev => ({ ...prev, formaPagamento: e.target.value }))}
+                    style={inputStyle}
+                  >
+                    <option value="boleto">Boleto Próprio</option>
+                    <option value="a_vista">À Vista / Pix</option>
+                    <option value="a_prazo">À Prazo</option>
+                  </select>
+                </div>
+                {(vendaEmEdicao.formaPagamento === 'a_prazo' || vendaEmEdicao.formaPagamento === 'boleto') && (
+                  <div style={{ width: '160px' }}>
+                    <label style={labelStyle}>Data Recebimento</label>
+                    <input
+                      type="date"
+                      value={vendaEmEdicao.dataRecebimento}
+                      onChange={(e) => setVendaEmEdicao(prev => ({ ...prev, dataRecebimento: e.target.value }))}
+                      style={inputStyle}
+                    />
+                  </div>
+                )}
+              </div>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={labelStyle}>Itens da Venda</label>
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                  border: '1px solid #e2d5c0',
+                  borderRadius: '12px',
+                  padding: '12px',
+                  maxHeight: '200px',
+                  overflowY: 'auto',
+                  background: '#fefcf8'
+                }}>
+                  {vendaEmEdicao.itens?.map((item, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px' }}>
+                      <span style={{ flex: 2, fontWeight: '500' }}>{item.nomeProduto}</span>
+                      <input
+                        type="number"
+                        step="1"
+                        min="1"
+                        value={item.quantidade}
+                        onChange={(e) => {
+                          const novosItens = [...vendaEmEdicao.itens];
+                          novosItens[idx].quantidade = parseInt(e.target.value) || 1;
+                          setVendaEmEdicao(prev => ({ ...prev, itens: novosItens }));
+                        }}
+                        style={{ width: '70px', padding: '4px 8px', borderRadius: '6px', border: '1px solid #e2d5c0' }}
+                      />
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={item.precoUnitario}
+                        onChange={(e) => {
+                          const novosItens = [...vendaEmEdicao.itens];
+                          novosItens[idx].precoUnitario = parseFloat(e.target.value) || 0;
+                          setVendaEmEdicao(prev => ({ ...prev, itens: novosItens }));
+                        }}
+                        style={{ width: '100px', padding: '4px 8px', borderRadius: '6px', border: '1px solid #e2d5c0' }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                <button type="button" onClick={() => setVendaEmEdicao(null)} style={{ backgroundColor: '#6b7280', color: '#fff', border: 'none', borderRadius: '8px', padding: '8px 16px', cursor: 'pointer' }}>Cancelar</button>
+                <button type="submit" style={{ backgroundColor: '#f4890f', color: '#fff', border: 'none', borderRadius: '8px', padding: '8px 16px', cursor: 'pointer' }}>Salvar Alterações</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toast && (
+        <div style={{
+          position: 'fixed',
+          bottom: '24px',
+          right: '24px',
+          backgroundColor: toast.tipo === 'success' ? '#10b981' : '#ef4444',
+          color: '#fff',
+          padding: '12px 24px',
+          borderRadius: '8px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          zIndex: 2000,
+          animation: 'slideIn 0.3s ease-out',
+          fontWeight: '500'
+        }}>
+          {toast.mensagem}
         </div>
       )}
     </div>

@@ -135,19 +135,25 @@ export default function ConfigLandingPage() {
         </div>
 
         {/* Seção 4: História */}
-        <div style={sectionStyle}>
-          <h3 style={sectionTitleStyle}>Sessão "Nossa História"</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-            <div>
-              <label style={labelStyle}>Título da História</label>
-              <input type="text" name="historyTitle" value={texts.historyTitle} onChange={handleChange} style={inputStyle} />
-            </div>
-            <div>
-              <label style={labelStyle}>Texto de História</label>
-              <textarea name="historyText" value={texts.historyText} onChange={handleChange} style={{ ...inputStyle, height: '120px', resize: 'vertical' }} />
-            </div>
-          </div>
-        </div>
+<div style={sectionStyle}>
+  <h3 style={sectionTitleStyle}>Sessão "Nossa História"</h3>
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+    <div>
+      <label style={labelStyle}>Título da História</label>
+      <input type="text" name="historyTitle" value={texts.historyTitle} onChange={handleChange} style={inputStyle} />
+    </div>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+      <div>
+        <label style={labelStyle}>Texto da História - Coluna Esquerda</label>
+        <textarea name="historyTextLeft" value={texts.historyTextLeft || ''} onChange={handleChange} style={{ ...inputStyle, height: '140px', resize: 'vertical' }} />
+      </div>
+      <div>
+        <label style={labelStyle}>Texto da História - Coluna Direita</label>
+        <textarea name="historyTextRight" value={texts.historyTextRight || ''} onChange={handleChange} style={{ ...inputStyle, height: '140px', resize: 'vertical' }} />
+      </div>
+    </div>
+  </div>
+</div>
 
         {/* Seção 5: Rodapé */}
         <div style={sectionStyle}>

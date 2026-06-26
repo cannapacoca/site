@@ -40,6 +40,7 @@ export default function AdminApp() {
   const [entregas, setEntregas] = useState([]);
   const [excecoes, setExcecoes] = useState([]);
   const [historicoCompras, setHistoricoCompras] = useState([]);
+  const [precoCombustivel, setPrecoCombustivel] = useState(0);
   const [dataLoading, setDataLoading] = useState(true);
   const [error, setError] = useState(null);
   const [alertasLogistica, setAlertasLogistica] = useState([]);
@@ -286,7 +287,7 @@ export default function AdminApp() {
         transform: isMobileMenuOpen ? 'translateX(0)' : 'translateX(-260px)'
       }} className="sidebar-container">
         <div style={{ padding: '0 20px 20px 20px', fontSize: '1.2em', fontWeight: 'bold', borderBottom: '1px solid #6a2402', marginBottom: '20px', marginTop: '20px', color: '#ffc03d' }}>
-          Paçocas Canáá
+          Paçocas Canaã
         </div>
         <nav style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
           {menuItems.map(item => (
@@ -347,6 +348,8 @@ export default function AdminApp() {
             entregas={entregas}
             onAdicionarExecucaoRota={adicionarExecucaoRota}
             onDeletarExecucaoRota={deletarExecucaoRota}
+            onUpdateRota={atualizarRota}
+            precoCombustivel={precoCombustivel}
           />
         )}
         {currentTab === 'clientes' && (
@@ -373,6 +376,8 @@ export default function AdminApp() {
             onUpdateMaterial={atualizarMaterial}
             onAddMaterial={adicionarMaterial}
             onDeleteMaterial={deletarMaterial}
+            precoCombustivel={precoCombustivel}
+            setPrecoCombustivel={setPrecoCombustivel}
           />
         )}
         {currentTab === 'receitas' && (
@@ -402,6 +407,7 @@ export default function AdminApp() {
             onAddExcecao={adicionarExcecao}
             onUpdateExcecao={atualizarExcecao}
             onDeleteExcecao={deletarExcecao}
+            precoCombustivel={precoCombustivel}
           />
         )}
         {currentTab === 'landing-page' && (

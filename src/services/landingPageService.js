@@ -69,6 +69,16 @@ export const landingPageService = {
     await Promise.all(promises);
   },
 
+  async trackView(page = 'landing') {
+  try {
+    await supabase.rpc('track_page_view', {
+      page_name: page
+    });
+  } catch (err) {
+    console.warn('Erro ao registrar view:', err);
+  }
+},
+
   getLocalTexts() {
     const local = localStorage.getItem('landing_page_config_local');
     if (local) {

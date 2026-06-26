@@ -9,6 +9,65 @@ import {
   Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
 
+import {
+  DndContext,
+  closestCenter
+} from "@dnd-kit/core";
+
+import {
+  useDraggable,
+  useDroppable
+} from "@dnd-kit/core";
+import { supabase } from '../lib/supabase';
+
+import { CSS } from "@dnd-kit/utilities";
+
+const formatarData = (data) => {
+  const ano = data.getFullYear();
+  const mes = String(data.getMonth() + 1).padStart(2, "0");
+  const dia = String(data.getDate()).padStart(2, "0");
+
+  return `${ano}-${mes}-${dia}`;
+};
+
+function RotaDraggable({ rota, children }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+  } = useDraggable({
+    id: `${rota.id}-${rota.dataPrevistaStr}`,
+    data: rota,
+  });
+
+  const style = {
+    transform: CSS.Translate.toString(transform),
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...listeners}
+      {...attributes}
+    >
+      {children}
+    </div>
+  );
+}
+ function DiaDroppable({ id, children }) {
+              const { setNodeRef } = useDroppable({
+                id,
+              });
+
+              return (
+                <div ref={setNodeRef}>
+                  {children}
+                </div>
+              );
+              }
+
 export default function DashboardPage({
   rotasSalvas = [],
   vendasLancadas = [],
@@ -17,13 +76,18 @@ export default function DashboardPage({
   historicoExecucaoRotas = [],        // <-- recebe do App
   entregas = [],                      // <-- recebe do App
   onAdicionarExecucaoRota,            // <-- função para criar
-  onDeletarExecucaoRota               // <-- função para deletar
+  onUpdateRota,
+  onDeletarExecucaoRota,              // <-- função para deletar
+  precoCombustivel = 0                // <-- preço do combustível
 }) {
   // ============================
   // 1. ESTADOS LOCAIS (sem localStorage)
   // ============================
   const [vendedor, setVendedor] = useState('');
   const [dataConclusao, setDataConclusao] = useState(new Date().toISOString().split('T')[0]);
+  const [filtroPeriodoCliente, setFiltroPeriodoCliente] = useState('mes'); // 'mes' ou 'semana'
+  const [valorRota, setValorRota] = useState('');
+  const [pageViews, setPageViews] = useState(0);
 
   // ============================
   // 2. CALENDÁRIO E LÓGICA DE ROTAS PREVISTAS
@@ -31,8 +95,6 @@ export default function DashboardPage({
   const [dataAtual, setDataAtual] = useState(new Date());
   const [rotasPorDia, setRotasPorDia] = useState({});
   const [modalAberto, setModalAberto] = useState(null);
-  const [valorRota, setValorRota] = useState('');
-  const [precoLitro, setPrecoLitro] = useState('');
 
   useEffect(() => {
     if (!modalAberto) return;
@@ -40,49 +102,79 @@ export default function DashboardPage({
     setDataConclusao(registro?.dataConclusao || new Date().toISOString().split('T')[0]);
     setVendedor(registro?.vendedor || '');
     setValorRota(registro?.valorGanho?.toString() || '');
-    setPrecoLitro(registro?.precoLitro?.toString() || '');
   }, [modalAberto]);
 
-  // Calcular a próxima data prevista para cada rota com base na última entrega + frequência
+  // Calcular ocorrências de rotas baseado em Data de Início + frequência
+  useEffect(() => {
+  async function loadViews() {
+    const { count, error } = await supabase
+      .from('page_views')
+      .select('*', { count: 'exact', head: true })
+      .eq('page', 'landing');
+
+    if (!error) {
+      setPageViews(count || 0);
+    }
+  }
+
+  loadViews();
+}, []);
   useEffect(() => {
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
     const novoMap = {};
 
     rotasSalvas.forEach(rota => {
-      let ultimaData = null;
-      rota.clientes.forEach(cliente => {
-        const entregasCliente = entregas
-          .filter(e => e.clienteId === cliente.id && (e.tipo === 'normal' || e.tipo === 'excecao'))
-          .sort((a, b) => new Date(b.data) - new Date(a.data));
-        if (entregasCliente.length > 0) {
-          const dataEntrega = new Date(entregasCliente[0].data);
-          if (!ultimaData || dataEntrega > ultimaData) ultimaData = dataEntrega;
+      // Se não tiver data_inicio, pular esta rota
+      if (!rota.dataInicio) return;
+
+      // Parse da data sem problemas de timezone
+      const [ano, mes, dia] = rota.dataInicio.split('-').map(Number);
+      const dataInicio = new Date(ano, mes - 1, dia);
+      dataInicio.setHours(12, 0, 0, 0); // Usar meio-dia para evitar problemas de timezone
+      
+      const frequencia = rota.frequencia || 7;
+      
+      // Calcular todas as ocorrências a partir da data de início
+      // Vamos calcular para os próximos 90 dias para cobrir o calendário
+      const dataLimite = new Date(hoje);
+      dataLimite.setDate(dataLimite.getDate() + 90);
+      dataLimite.setHours(12, 0, 0, 0);
+      
+      let dataAtual = new Date(dataInicio);
+      let indiceOcorrencia = 0;
+
+      while (dataAtual <= dataLimite) {
+        // Formatar data sem timezone issues
+        const anoStr = dataAtual.getFullYear();
+        const mesStr = String(dataAtual.getMonth() + 1).padStart(2, '0');
+        const diaStr = String(dataAtual.getDate()).padStart(2, '0');
+        const dataStr = `${anoStr}-${mesStr}-${diaStr}`;
+        
+        // Verificar se esta ocorrência já foi executada
+        const jaExecutada = historicoExecucaoRotas.some(h =>
+          h.rotaId === rota.id && h.dataExecucao === dataStr
+        );
+        
+        // Se não foi executada, adicionar ao calendário
+        if (!jaExecutada) {
+          if (!novoMap[dataStr]) novoMap[dataStr] = [];
+          novoMap[dataStr].push({
+  ...rota,
+  dataPrevista: new Date(dataAtual),
+  dataPrevistaStr: dataStr,
+  indiceOcorrencia
+});
         }
-      });
-
-      let proximaData;
-      if (!ultimaData) {
-        const dataCriacao = new Date(rota.dataCriacao.split('/').reverse().join('-'));
-        proximaData = new Date(dataCriacao);
-      } else {
-        proximaData = new Date(ultimaData);
-        proximaData.setDate(ultimaData.getDate() + rota.frequencia);
-      }
-
-      if (proximaData < hoje) {
-        const chave = hoje.toISOString().split('T')[0];
-        if (!novoMap[chave]) novoMap[chave] = [];
-        novoMap[chave].push({ ...rota, dataPrevista: hoje });
-      } else {
-        const chave = proximaData.toISOString().split('T')[0];
-        if (!novoMap[chave]) novoMap[chave] = [];
-        novoMap[chave].push({ ...rota, dataPrevista: proximaData });
+        
+        // Avançar para a próxima ocorrência
+        dataAtual.setDate(dataAtual.getDate() + frequencia);
+        indiceOcorrencia++;
       }
     });
 
     setRotasPorDia(novoMap);
-  }, [rotasSalvas, entregas]);
+  }, [rotasSalvas, historicoExecucaoRotas]);
 
   // Funções de navegação do calendário
   const mesAtual = dataAtual.getMonth();
@@ -100,16 +192,59 @@ export default function DashboardPage({
   // ============================
   // 3. MODAL DE ROTA - REGISTRAR EXECUÇÃO
   // ============================
+
+const handleDragEnd = async (event) => {
+  const { active, over } = event;
+
+  if (!over) return;
+
+  const rota = active.data.current;
+
+  // Soltou no mesmo dia
+  if (rota.dataPrevistaStr === over.id) return;
+
+  // 1. Criamos a data corrigida para o fuso local PRIMEIRO
+  const [ano, mes, dia] = over.id.split("-").map(Number);
+  const novaData = new Date(ano, mes - 1, dia);
+
+  // 2. Agora o toLocaleDateString() vai exibir o dia certinho no confirm
+  const confirmar = window.confirm(
+    `Mover a rota "${rota.nome}" para ${novaData.toLocaleDateString()}?\n\n` +
+    "Isso alterará todas as ocorrências futuras dessa rota."
+  );
+
+  if (!confirmar) return;
+
+  // 3. Segue o baile com a lógica que já estava certa
+  const novaDataInicio = new Date(novaData);
+
+  novaDataInicio.setDate(
+    novaDataInicio.getDate() -
+    rota.indiceOcorrencia * rota.frequencia
+  );
+
+  try {
+    await onUpdateRota(rota.id, {
+      dataInicio: formatarData(novaDataInicio)
+    });
+
+    alert("Rota movida com sucesso!");
+  } catch (e) {
+    console.error(e);
+    alert("Erro ao mover a rota.");
+  }
+};
+
   const registrarExecucaoRota = async (rota, dataPrevista) => {
-    if (!valorRota || !precoLitro) {
-      alert('Preencha o valor ganho na rota e o preço do litro do combustível.');
+    if (!valorRota) {
+      alert('Preencha o valor ganho na rota.');
       return;
     }
 
     const litros = rota.distanciaKm && rota.consumoKmL
       ? (rota.distanciaKm / rota.consumoKmL)
       : 0;
-    const preco = Number(precoLitro || 0);
+    const preco = Number(precoCombustivel || 0);
     const valor = Number(valorRota || 0);
     const custoCombustivel = litros * preco;
     const lucro = valor - custoCombustivel;
@@ -118,11 +253,11 @@ export default function DashboardPage({
       id: modalAberto?.registroExistente?.id || Date.now(),
       rotaId: rota.id,
       rotaNome: rota.nome,
-      dataExecucao: dataPrevista.toISOString().split('T')[0],
+      dataExecucao: formatarData(dataPrevista),
       dataConclusao,
       vendedor,
       valorGanho: parseFloat(valorRota),
-      precoLitro: parseFloat(precoLitro),
+      precoLitro: parseFloat(precoCombustivel),
       litrosConsumidos: litros,
       custoCombustivel,
       lucro
@@ -136,7 +271,6 @@ export default function DashboardPage({
       await onAdicionarExecucaoRota(novoRegistro);
       setModalAberto(null);
       setValorRota('');
-      setPrecoLitro('');
       alert('Execução da rota registrada com sucesso!');
     } catch (error) {
       console.error('Erro ao registrar execução:', error);
@@ -159,7 +293,7 @@ export default function DashboardPage({
 
   const isRotaExecutadaNaData = (rotaId, dataPrevista) => {
     return historicoExecucaoRotas.some(h =>
-      h.rotaId === rotaId && h.dataExecucao === dataPrevista.toISOString().split('T')[0]
+      h.rotaId === rotaId && h.dataExecucao === formatarData(dataPrevista)
     );
   };
 
@@ -185,11 +319,17 @@ export default function DashboardPage({
     const totalAmendoimDoce = vendasAmendoimDoce.reduce((acc, v) => acc + v.totalVenda, 0);
     const totalLucroAmendoimDoce = vendasAmendoimDoce.reduce((acc, v) => acc + v.lucroBrutoTotal, 0);
 
-    const vendasNotaPrazoBoleto = vendasMes.filter(v =>
-      v.emiteNota === true && (v.formaPagamento === 'a_prazo' || v.formaPagamento === 'boleto')
+    const vendasNotaPrazo = vendasMes.filter(v =>
+      v.emiteNota === true && v.formaPagamento === 'a_prazo'
     );
-    const totalVendasNotaPrazoBoleto = vendasNotaPrazoBoleto.reduce((acc, v) => acc + v.totalVenda, 0);
-    const totalLucroNotaPrazoBoleto = vendasNotaPrazoBoleto.reduce((acc, v) => acc + v.lucroBrutoTotal, 0);
+    const totalVendasNotaPrazo = vendasNotaPrazo.reduce((acc, v) => acc + v.totalVenda, 0);
+    const totalLucroNotaPrazo = vendasNotaPrazo.reduce((acc, v) => acc + v.lucroBrutoTotal, 0);
+
+    const vendasNotaBoleto = vendasMes.filter(v =>
+      v.emiteNota === true && v.formaPagamento === 'boleto'
+    );
+    const totalVendasNotaBoleto = vendasNotaBoleto.reduce((acc, v) => acc + v.totalVenda, 0);
+    const totalLucroNotaBoleto = vendasNotaBoleto.reduce((acc, v) => acc + v.lucroBrutoTotal, 0);
 
     const vendasSemNota = vendasMes.filter(v => v.emiteNota === false);
     const totalVendasSemNota = vendasSemNota.reduce((acc, v) => acc + v.totalVenda, 0);
@@ -204,14 +344,16 @@ export default function DashboardPage({
       totalLucroMes,
       totalAmendoimDoce,
       totalLucroAmendoimDoce,
-      totalVendasNotaPrazoBoleto,
-      totalLucroNotaPrazoBoleto,
+      totalVendasNotaPrazo,
+      totalLucroNotaPrazo,
+      totalVendasNotaBoleto,
+      totalLucroNotaBoleto,
       totalVendasSemNota,
       totalLucroVendasSemNota,
       totalVendasAVista,
       totalLucroAVista,
       vendasPorDia: vendasMes.reduce((acc, v) => {
-        const dia = v.data;
+        const dia = v.dataRecebimento || v.data;
         if (!acc[dia]) acc[dia] = { total: 0, lucro: 0 };
         acc[dia].total += v.totalVenda;
         acc[dia].lucro += v.lucroBrutoTotal;
@@ -225,7 +367,7 @@ export default function DashboardPage({
     for (let i = 29; i >= 0; i--) {
       const data = new Date();
       data.setDate(data.getDate() - i);
-      const dataStr = data.toISOString().split('T')[0];
+      const dataStr = formatarData(data)
       const dados = metricasVendas.vendasPorDia[dataStr] || { total: 0, lucro: 0 };
       ultimos30Dias.push({ data: dataStr, total: dados.total, lucro: dados.lucro });
     }
@@ -243,6 +385,46 @@ export default function DashboardPage({
       data: r.dataExecucao
     }));
   }, [historicoExecucaoRotas]);
+
+  // Dados de vendas por cliente
+  const dadosVendasPorCliente = useMemo(() => {
+    const hoje = new Date();
+    let dataInicioFiltro;
+    
+    if (filtroPeriodoCliente === 'semana') {
+      dataInicioFiltro = new Date(hoje);
+      dataInicioFiltro.setDate(hoje.getDate() - 7);
+    } else {
+      dataInicioFiltro = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+    }
+    
+    const vendasFiltradas = vendasLancadas.filter(v => {
+      const dataVenda = new Date(v.dataRecebimento || v.data);
+      return dataVenda >= dataInicioFiltro;
+    });
+    
+    const vendasPorCliente = {};
+    vendasFiltradas.forEach(v => {
+      const cliente = clientes.find(c => c.id === v.clienteId);
+      const nomeCliente = cliente?.nomeFantasia || cliente?.razaoSocial || 'Cliente desconhecido';
+      
+      if (!vendasPorCliente[nomeCliente]) {
+        vendasPorCliente[nomeCliente] = { total: 0, lucro: 0, quantidade: 0 };
+      }
+      vendasPorCliente[nomeCliente].total += v.totalVenda;
+      vendasPorCliente[nomeCliente].lucro += v.lucroBrutoTotal;
+      vendasPorCliente[nomeCliente].quantidade += 1;
+    });
+    
+    return Object.entries(vendasPorCliente)
+      .map(([nome, dados]) => ({ 
+        nome: nome.length > 15 ? nome.substring(0, 4) + '...' : nome,
+        nomeCompleto: nome,
+        ...dados 
+      }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 10);
+  }, [vendasLancadas, clientes, filtroPeriodoCliente]);
 
   const resumoRotasMes = useMemo(() => {
     const hoje = new Date();
@@ -269,9 +451,16 @@ export default function DashboardPage({
         <MetricCard title="Faturamento Mensal" value={`R$ ${metricasVendas.totalVendasMes.toFixed(2)}`} icon={<DollarSign size={24} />} color="#10b981" />
         <MetricCard title="Lucro Bruto Mensal" value={`R$ ${metricasVendas.totalLucroMes.toFixed(2)}`} icon={<TrendingUp size={24} />} color="#3b82f6" />
         <MetricCard title="Vendas à Vista" value={`R$ ${metricasVendas.totalVendasAVista.toFixed(2)}`} subtitle={`Lucro: R$ ${metricasVendas.totalLucroAVista.toFixed(2)}`} icon={<CreditCard size={24} />} color="#f59e0b" />
-        <MetricCard title="Vendas com Nota (Prazo/Boleto)" value={`R$ ${metricasVendas.totalVendasNotaPrazoBoleto.toFixed(2)}`} subtitle={`Lucro: R$ ${metricasVendas.totalLucroNotaPrazoBoleto.toFixed(2)}`} icon={<FileText size={24} />} color="#8b5cf6" />
+        <MetricCard title="Vendas com Nota (Prazo)" value={`R$ ${metricasVendas.totalVendasNotaPrazo.toFixed(2)}`} subtitle={`Lucro: R$ ${metricasVendas.totalLucroNotaPrazo.toFixed(2)}`} icon={<FileText size={24} />} color="#8b5cf6" />
+        <MetricCard title="Vendas com Nota (Boleto)" value={`R$ ${metricasVendas.totalVendasNotaBoleto.toFixed(2)}`} subtitle={`Lucro: R$ ${metricasVendas.totalLucroNotaBoleto.toFixed(2)}`} icon={<FileText size={24} />} color="#6366f1" />
         <MetricCard title="Vendas sem Nota" value={`R$ ${metricasVendas.totalVendasSemNota.toFixed(2)}`} subtitle={`Lucro: R$ ${metricasVendas.totalLucroVendasSemNota.toFixed(2)}`} icon={<ShoppingBag size={24} />} color="#ef4444" />
         <MetricCard title="Amendoim Doce (Praliné)" value={`R$ ${metricasVendas.totalAmendoimDoce.toFixed(2)}`} subtitle={`Lucro: R$ ${metricasVendas.totalLucroAmendoimDoce.toFixed(2)}`} icon={<TrendingUp size={24} />} color="#ec4899" />
+        <MetricCard
+  title="Visitas Landing Page"
+  value={pageViews}
+  icon={<BarChart3 size={24} />}
+  color="#6366f1"
+/>
       </div>
 
       {/* Gráficos */}
@@ -313,6 +502,63 @@ export default function DashboardPage({
             </ResponsiveContainer>
           )}
         </div>
+
+        <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+              <TrendingUp size={20} /> Vendas por Cliente
+            </h3>
+            <div>
+              <button 
+                onClick={() => setFiltroPeriodoCliente('mes')}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  border: '1px solid #cbd5e1',
+                  background: filtroPeriodoCliente === 'mes' ? '#3b82f6' : '#fff',
+                  color: filtroPeriodoCliente === 'mes' ? '#fff' : '#334155',
+                  cursor: 'pointer',
+                  marginRight: '8px'
+                }}
+              >
+                Mês
+              </button>
+              <button 
+                onClick={() => setFiltroPeriodoCliente('semana')}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  border: '1px solid #cbd5e1',
+                  background: filtroPeriodoCliente === 'semana' ? '#3b82f6' : '#fff',
+                  color: filtroPeriodoCliente === 'semana' ? '#fff' : '#334155',
+                  cursor: 'pointer'
+                }}
+              >
+                Semana
+              </button>
+            </div>
+          </div>
+          {dadosVendasPorCliente.length === 0 ? (
+            <p style={{ color: '#64748b', textAlign: 'center', padding: '40px' }}>Nenhuma venda registrada neste período.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={dadosVendasPorCliente}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="nome" tick={{ fontSize: 10 }} />
+                <YAxis />
+                <Tooltip 
+                  formatter={(value) => `R$ ${value.toFixed(2)}`}
+                  labelFormatter={(label) => {
+                    const item = dadosVendasPorCliente.find(d => d.nome === label);
+                    return item?.nomeCompleto || label;
+                  }}
+                />
+                <Legend />
+                <Bar dataKey="total" fill="#10b981" name="Faturamento" />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
       </div>
 
       {/* Resumo de rotas do mês */}
@@ -339,38 +585,47 @@ export default function DashboardPage({
             <div key={day} style={{ fontWeight: 'bold', color: '#64748b' }}>{day}</div>
           ))}
         </div>
-
+        <DndContext
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+        >
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '8px' }}>
           {todosDias.map((dia, idx) => {
+           
             if (!dia) return <div key={`empty-${idx}`} style={{ background: '#f8fafc', borderRadius: '8px', minHeight: '100px' }} />;
-            const dataStr = dia.toISOString().split('T')[0];
+            const dataStr = formatarData(dia)
             const rotasDia = rotasPorDia[dataStr] || [];
-            const isHoje = dataStr === new Date().toISOString().split('T')[0];
+            const isHoje = dataStr === formatarData(new Date());
 
             return (
+              <DiaDroppable id={dataStr}>
               <div key={dataStr} style={{ background: '#f8fafc', borderRadius: '8px', padding: '8px', minHeight: '100px', border: isHoje ? '2px solid #3b82f6' : '1px solid #e2e8f0', overflow: 'auto' }}>
                 <div style={{ fontWeight: 'bold', marginBottom: '6px' }}>{dia.getDate()}</div>
                 {rotasDia.map(rota => {
                   const jaExecutada = isRotaExecutadaNaData(rota.id, dia);
                   return (
+                    <RotaDraggable rota={rota}>
                     <button
                       key={rota.id}
-                      onClick={() => setModalAberto({ rota, dataPrevista: dia, registroExistente: historicoExecucaoRotas.find(h => h.rotaId === rota.id && h.dataExecucao === dia.toISOString().split('T')[0]) })}
+                      onClick={() => setModalAberto({ rota, dataPrevista: dia, registroExistente: historicoExecucaoRotas.find(h => h.rotaId === rota.id && h.dataExecucao === formatarData(dia)) })}
                       style={{ display: 'block', width: '100%', textAlign: 'left', background: jaExecutada ? '#dcfce7' : '#e0f2fe', border: 'none', borderRadius: '4px', padding: '4px 6px', marginBottom: '4px', fontSize: '0.75rem', cursor: jaExecutada ? 'default' : 'pointer', color: jaExecutada ? '#166534' : '#1e40af' }}
                     >
                       🚚 {rota.nome || 'Sem nome'}
                       {jaExecutada && (
                         <div style={{ fontSize: '0.65rem', marginTop: 2, color: '#166534' }}>
-                          ✓ {historicoExecucaoRotas.find(h => h.rotaId === rota.id && h.dataExecucao === dia.toISOString().split('T')[0])?.dataConclusao}
+                          ✓ {historicoExecucaoRotas.find(h => h.rotaId === rota.id && h.dataExecucao === formatarData(dia))?.dataConclusao}
                         </div>
                       )}
                     </button>
+                    </RotaDraggable>
                   );
                 })}
               </div>
+              </DiaDroppable>
             );
           })}
         </div>
+        </DndContext>
       </div>
 
       {/* MODAL de registro de execução (com as novas funções) */}
@@ -390,10 +645,6 @@ export default function DashboardPage({
               <input type="number" step="0.01" value={valorRota} onChange={(e) => setValorRota(e.target.value)} style={inputStyle} placeholder="Ex: 850.00" />
             </div>
             <div style={{ margin: '16px 0' }}>
-              <label style={labelStyle}>⛽ Preço do litro do combustível (R$)</label>
-              <input type="number" step="0.01" value={precoLitro} onChange={(e) => setPrecoLitro(e.target.value)} style={inputStyle} placeholder="Ex: 6.29" />
-            </div>
-            <div style={{ margin: '16px 0' }}>
               <label style={labelStyle}>👤 Vendedor</label>
               <input type="text" value={vendedor} onChange={(e) => setVendedor(e.target.value)} style={inputStyle} placeholder="Nome do vendedor" />
             </div>
@@ -407,7 +658,9 @@ export default function DashboardPage({
                 <p style={{ margin: 0 }}><strong>Cálculo automático:</strong></p>
                 <p style={{ margin: 0, fontSize: '0.9rem' }}>
                   Distância: {modalAberto.rota.distanciaKm} km | Consumo: {modalAberto.rota.consumoKmL} km/L<br />
-                  Litros estimados: {(modalAberto.rota.distanciaKm / modalAberto.rota.consumoKmL).toFixed(1)} L
+                  Litros estimados: {(modalAberto.rota.distanciaKm / modalAberto.rota.consumoKmL).toFixed(1)} L<br />
+                  Preço combustível: R$ {precoCombustivel?.toFixed(2) || '0.00'}<br />
+                  Custo combustível: R$ {((modalAberto.rota.distanciaKm / modalAberto.rota.consumoKmL) * (precoCombustivel || 0)).toFixed(2)}
                 </p>
               </div>
             )}

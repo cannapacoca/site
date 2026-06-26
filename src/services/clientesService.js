@@ -18,6 +18,8 @@ const toSnakeCase = (cliente) => ({
   emite_nota: cliente.emiteNota,
   emissao_bolet: cliente.emissaoBolet,
   a_vista: cliente.aVista,
+  a_prazo: cliente.aPrazo,
+  tipo_cliente: cliente.tipoCliente,
   observacoes: cliente.observacoes,
 });
 
@@ -40,6 +42,8 @@ const toCamelCase = (cliente) => ({
   emiteNota: cliente.emite_nota,
   emissaoBolet: cliente.emissao_bolet,
   aVista: cliente.a_vista,
+  aPrazo: cliente.a_prazo,
+  tipoCliente: cliente.tipo_cliente,
   observacoes: cliente.observacoes,
   createdAt: cliente.created_at,
 });

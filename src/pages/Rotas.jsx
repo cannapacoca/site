@@ -14,14 +14,18 @@ export default function Rotas({
   onDeleteEntrega,
   onAddExcecao,
   onUpdateExcecao,
-  onDeleteExcecao
+  onDeleteExcecao,
+  precoCombustivel
 }) {
   const [selecionados, setSelecionados] = useState([]);
+  const [buscaCliente, setBuscaCliente] = useState('');
   const [frequencia, setFrequencia] = useState(7);
+  const [dataInicio, setDataInicio] = useState('');
   const [rotaEmEdicao, setRotaEmEdicao] = useState(null);
   const [nomeRota, setNomeRota] = useState('');
   const [distanciaKm, setDistanciaKm] = useState('');
   const [consumoKmL, setConsumoKmL] = useState('');
+  const [rotaParaDeletar, setRotaParaDeletar] = useState(null);
   
   // Modal de confirmação para entrega antecipada
   const [modalData, setModalData] = useState({
@@ -32,9 +36,12 @@ export default function Rotas({
     entregaAntecipada: null,
     excecaoId: null
   });
+  const [valorRota, setValorRota] = useState('');
   
-  // Estado para controle de seleção de cliente para exceção
-  const [clienteSelecionadoExcecao, setClienteSelecionadoExcecao] = useState({});
+  // Estado para controle de seleção de cliente para encaixe
+  const [clienteSelecionadoEncaixe, setClienteSelecionadoEncaixe] = useState({});
+  const [buscaEncaixe, setBuscaEncaixe] = useState('');
+  const [encaixeDropdownAberto, setEncaixeDropdownAberto] = useState({});
   
   // Geração de ID único
   const gerarIdUnico = () => {
@@ -98,7 +105,7 @@ export default function Rotas({
     ) || null;
   };
   
-  const adicionarExcecao = async (clienteId, rotaDestinoId, rotaOrigemId) => {
+  const adicionarEncaixe = async (clienteId, rotaDestinoId, rotaOrigemId) => {
     const cliente = clientes.find(c => c.id === clienteId);
     if (!cliente) return;
     
@@ -108,8 +115,16 @@ export default function Rotas({
       !exp.entregue
     );
     if (existe) {
-      alert(`O cliente ${cliente.razaoSocial} já possui uma exceção ativa para esta rota.`);
+      alert(`O cliente ${cliente.razaoSocial} já possui um encaixe ativo para esta rota.`);
       return;
+    }
+    
+    const rotaOrigem = rotasSalvas.find(r => r.id === rotaOrigemId);
+    if (rotaOrigem) {
+      const confirmar = window.confirm(
+        `O cliente ${cliente.razaoSocial} está atualmente na rota "${rotaOrigem.nome}".\n\nDeseja criar o encaixe para a rota atual?`
+      );
+      if (!confirmar) return;
     }
     
     const novaExcecao = {
@@ -124,20 +139,20 @@ export default function Rotas({
     
     try {
       await onAddExcecao(novaExcecao);
-      alert(`Exceção criada! O cliente ${cliente.razaoSocial} será entregue junto com a rota atual.`);
+      alert(`Encaixe criado! O cliente ${cliente.razaoSocial} será entregue junto com a rota atual.`);
     } catch (error) {
-      console.error('Erro ao adicionar exceção:', error);
-      alert('Erro ao adicionar exceção.');
+      console.error('Erro ao adicionar encaixe:', error);
+      alert('Erro ao adicionar encaixe.');
     }
   };
   
-  const removerExcecao = async (excecaoId) => {
-    if (window.confirm('Remover esta exceção? O cliente voltará a ser entregue apenas em sua rota original.')) {
+  const removerEncaixe = async (excecaoId) => {
+    if (window.confirm('Remover este encaixe? O cliente voltará a ser entregue apenas em sua rota original.')) {
       try {
         await onDeleteExcecao(excecaoId);
       } catch (error) {
-        console.error('Erro ao remover exceção:', error);
-        alert('Erro ao remover exceção.');
+        console.error('Erro ao remover encaixe:', error);
+        alert('Erro ao remover encaixe.');
       }
     }
   };
@@ -179,6 +194,7 @@ export default function Rotas({
   const salvarRota = async () => {
     if (selecionados.length === 0) return alert("Selecione pelo menos um cliente.");
     if (!nomeRota.trim()) return alert("Informe um nome para a rota.");
+    if (!dataInicio) return alert("Informe a data de início da rota.");
     
     const ordenados = [...selecionados].sort((a, b) => a.bairro.localeCompare(b.bairro));
     
@@ -188,6 +204,7 @@ export default function Rotas({
           nome: nomeRota,
           clientes: ordenados,
           frequencia: parseInt(frequencia),
+          dataInicio: dataInicio,
           distanciaKm: distanciaKm ? parseFloat(distanciaKm) : null,
           consumoKmL: consumoKmL ? parseFloat(consumoKmL) : null
         });
@@ -198,6 +215,7 @@ export default function Rotas({
           dataCriacao: new Date().toLocaleDateString(), 
           nome: nomeRota,
           frequencia: parseInt(frequencia), 
+          dataInicio: dataInicio,
           clientes: ordenados,
           distanciaKm: distanciaKm ? parseFloat(distanciaKm) : null,
           consumoKmL: consumoKmL ? parseFloat(consumoKmL) : null
@@ -207,6 +225,7 @@ export default function Rotas({
       
       setSelecionados([]);
       setFrequencia(7);
+      setDataInicio('');
       setNomeRota('');
       setDistanciaKm('');
       setConsumoKmL('');
@@ -216,10 +235,16 @@ export default function Rotas({
     }
   };
   
-  const excluirRota = async (id) => {
-    if (window.confirm('Excluir esta rota permanentemente?')) {
+  const excluirRota = (id) => {
+    const rota = rotasSalvas.find(r => r.id === id);
+    setRotaParaDeletar(rota);
+  };
+
+  const confirmarExcluirRota = async () => {
+    if (rotaParaDeletar) {
       try {
-        await onDeleteRota(id);
+        await onDeleteRota(rotaParaDeletar.id);
+        setRotaParaDeletar(null);
       } catch (error) {
         console.error('Erro ao excluir rota:', error);
         alert('Erro ao excluir rota.');
@@ -231,17 +256,29 @@ export default function Rotas({
     setRotaEmEdicao(rota);
     setSelecionados(rota.clientes);
     setFrequencia(rota.frequencia);
+    setDataInicio(rota.dataInicio || '');
     setNomeRota(rota.nome || '');
     setDistanciaKm(rota.distanciaKm || '');
     setConsumoKmL(rota.consumoKmL || '');
   };
   
   const gerarLinkGoogleMaps = (clientesDaRota) => {
-    const origem = "Seu Endereço Completo, Cidade, Estado"; 
-    const destinos = clientesDaRota
-      .map(c => `${c.endereco}, ${c.numero}, ${c.cep}`)
-      .join('/');
-    const url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origem)}&destination=${encodeURIComponent(clientesDaRota[clientesDaRota.length - 1].endereco)}&waypoints=${encodeURIComponent(destinos)}&travelmode=driving&dir_action=navigate`;
+    const origem = "Rua Frei Jerônimo de São Brás, 202 - Taubaté - SP";
+    
+    // Construir waypoints corretamente (um endereço por waypoint)
+    const waypoints = clientesDaRota.slice(0, -1).map(c => 
+      `${c.endereco}, ${c.numero}, ${c.bairro}, ${c.cidade}, ${c.cep}`
+    ).join('|');
+    
+    const destino = clientesDaRota[clientesDaRota.length - 1];
+    const destinoStr = `${destino.endereco}, ${destino.numero}, ${destino.bairro}, ${destino.cidade}, ${destino.cep}`;
+    
+    let url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origem)}&destination=${encodeURIComponent(destinoStr)}&travelmode=driving&dir_action=navigate`;
+    
+    if (waypoints) {
+      url += `&waypoints=${encodeURIComponent(waypoints)}`;
+    }
+    
     window.open(url, '_blank');
   };
   
@@ -260,11 +297,25 @@ export default function Rotas({
           <div style={{ background: '#f5efe5', padding: '12px 20px', borderBottom: '1px solid #e2d5c0', color: '#6a2402', fontWeight: 'bold' }}>
             Selecione os clientes:
           </div>
+          <div style={{ padding: '12px', borderBottom: '1px solid #e2d5c0' }}>
+            <input
+              type="text"
+              placeholder="Buscar por nome fantasia..."
+              value={buscaCliente}
+              onChange={(e) => setBuscaCliente(e.target.value)}
+              style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2d5c0', fontSize: '0.85rem' }}
+            />
+          </div>
           <div style={{ maxHeight: '400px', overflowY: 'auto', padding: '12px' }}>
-            {clientes.map(c => (
+            {clientes
+              .filter(c => 
+                c.nomeFantasia?.toLowerCase().includes(buscaCliente.toLowerCase()) ||
+                c.razaoSocial?.toLowerCase().includes(buscaCliente.toLowerCase())
+              )
+              .map(c => (
               <div key={c.id} style={{ padding: '8px 12px', borderBottom: '1px solid #f0e6d5', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <input type="checkbox" checked={!!selecionados.find(s => s.id === c.id)} onChange={() => toggleCliente(c)} style={{ accentColor: '#f4890f', width: '16px', height: '16px' }} />
-                <span style={{ fontSize: '0.85rem', color: '#351000' }}><strong>{c.razaoSocial}</strong> - {c.bairro}</span>
+                <span style={{ fontSize: '0.85rem', color: '#351000' }}><strong>{c.razaoSocial}</strong> - {c.nomeFantasia ? `(${c.nomeFantasia})` : ''} - {c.bairro}</span>
               </div>
             ))}
           </div>
@@ -274,6 +325,9 @@ export default function Rotas({
         <div style={{ background: '#fff', borderRadius: '20px', border: '1px solid #e2d5c0', padding: '20px' }}>
           <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#4b342e', marginBottom: '4px' }}>Nome da Rota:</label>
           <input type="text" value={nomeRota} onChange={(e) => setNomeRota(e.target.value)} style={inputStyle} placeholder="Ex: Rota Zona Sul" />
+          
+          <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#4b342e', marginTop: '12px', marginBottom: '4px' }}>Data de Início:</label>
+          <input type="date" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} style={inputStyle} />
           
           <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#4b342e', marginTop: '12px', marginBottom: '4px' }}>Frequência (dias):</label>
           <input type="number" value={frequencia} onChange={(e) => setFrequencia(e.target.value)} style={inputStyle} />
@@ -288,7 +342,7 @@ export default function Rotas({
           <button onClick={salvarRota} style={{ width: '100%', padding: '10px', marginTop: '20px', background: '#f4890f', color: '#fff', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9rem' }}>
             {rotaEmEdicao ? "Salvar Alterações" : "Salvar Rota"}
           </button>
-          {rotaEmEdicao && <button onClick={() => { setRotaEmEdicao(null); setSelecionados([]); setNomeRota(''); setDistanciaKm(''); setConsumoKmL(''); }} style={{ width: '100%', marginTop: '10px', background: '#fff', border: '1px solid #e2d5c0', borderRadius: '12px', padding: '10px', cursor: 'pointer', color: '#6a2402' }}>Cancelar Edição</button>}
+          {rotaEmEdicao && <button onClick={() => { setRotaEmEdicao(null); setSelecionados([]); setDataInicio(''); setNomeRota(''); setDistanciaKm(''); setConsumoKmL(''); }} style={{ width: '100%', marginTop: '10px', background: '#fff', border: '1px solid #e2d5c0', borderRadius: '12px', padding: '10px', cursor: 'pointer', color: '#6a2402' }}>Cancelar Edição</button>}
         </div>
       </div>
       
@@ -324,7 +378,7 @@ export default function Rotas({
       
       {/* Lista de Rotas Salvas em cards */}
       <h3 style={{ color: '#351000', margin: '40px 0 20px 0', fontSize: '1.4rem' }}>Rotas Salvas</h3>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(480px, 1fr))', gap: '24px', marginBottom: '40px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(600px, 1fr))', gap: '24px', marginBottom: '40px' }}>
         {rotasSalvas.map(rota => {
           const litros = calcularLitros(rota);
           const excecoesAtivas = getExcecoesAtivasPorRota(rota.id);
@@ -339,8 +393,9 @@ export default function Rotas({
                   <button onClick={() => excluirRota(rota.id)} style={{ background: '#ef4444', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '8px', cursor: 'pointer' }}>Excluir</button>
                 </div>
               </div>
-              <div style={{ fontSize: '0.8rem', color: '#8e6b49', marginBottom: '12px', display: 'flex', gap: '16px' }}>
+              <div style={{ fontSize: '0.8rem', color: '#8e6b49', marginBottom: '12px', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
                 <span>Criada: {rota.dataCriacao}</span>
+                <span>Início: {rota.dataInicio || 'Não definido'}</span>
                 <span>Frequência: {rota.frequencia} dias</span>
               </div>
               {litros && (
@@ -388,10 +443,10 @@ export default function Rotas({
                 </div>
               </div>
               
-              {/* Exceções ativas */}
+              {/* Encaixes ativos */}
               {excecoesAtivas.length > 0 && (
                 <div style={{ marginBottom: '16px', background: '#fff3e0', padding: '8px 12px', borderRadius: '12px' }}>
-                  <strong style={{ fontSize: '0.8rem', color: '#b45309' }}>📌 Exceções de entrega ativas:</strong>
+                  <strong style={{ fontSize: '0.8rem', color: '#b45309' }}>📌 Encaixes de entrega ativos:</strong>
                   <div style={{ fontSize: '0.75rem', marginTop: '6px' }}>
                     {excecoesAtivas.map(exp => {
                       const cliente = clientes.find(c => c.id === exp.clienteId);
@@ -404,7 +459,7 @@ export default function Rotas({
                           </span>
                           <div>
                             <button onClick={() => registrarEntrega(cliente.id, cliente.razaoSocial, rota.id, 'excecao', exp.id)} style={{ background: '#10b981', color: '#fff', border: 'none', padding: '2px 10px', borderRadius: '12px', fontSize: '0.65rem', cursor: 'pointer', marginRight: '5px' }}>Registrar</button>
-                            <button onClick={() => removerExcecao(exp.id)} style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '2px 8px', borderRadius: '12px', fontSize: '0.65rem', cursor: 'pointer' }}>Cancelar</button>
+                            <button onClick={() => removerEncaixe(exp.id)} style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '2px 8px', borderRadius: '12px', fontSize: '0.65rem', cursor: 'pointer' }}>Cancelar</button>
                           </div>
                         </div>
                       );
@@ -413,44 +468,77 @@ export default function Rotas({
                 </div>
               )}
               
-              {/* Criar exceção */}
+              {/* Criar encaixe */}
               <div style={{ marginBottom: '12px', borderTop: '1px solid #e2d5c0', paddingTop: '12px' }}>
-                <strong style={{ fontSize: '0.8rem', color: '#6a2402' }}>➕ Criar exceção de entrega:</strong>
-                <div style={{ display: 'flex', gap: '8px', marginTop: '6px', alignItems: 'center' }}>
-                  {clientesOutrasRotas.length === 0 ? (
-                    <span style={{ fontSize: '0.7rem', color: '#aaa' }}>Nenhum cliente de outras rotas disponível para exceção.</span>
-                  ) : (
-                    <>
-                      <select 
-                        style={{ flex: 1, padding: '6px', borderRadius: '10px', border: '1px solid #e2d5c0', fontSize: '0.7rem' }}
-                        value={clienteSelecionadoExcecao[rota.id] || ''}
-                        onChange={(e) => setClienteSelecionadoExcecao(prev => ({ ...prev, [rota.id]: e.target.value }))}
-                      >
-                        <option value="">Selecione um cliente de outra rota</option>
-                        {clientesOutrasRotas.map(c => {
+                <strong style={{ fontSize: '0.8rem', color: '#6a2402' }}>➕ Criar encaixe de entrega:</strong>
+                <div style={{ position: 'relative', marginTop: '8px' }}>
+                  <input
+                    type="text"
+                    placeholder="Buscar cliente..."
+                    value={buscaEncaixe}
+                    onChange={(e) => {
+                      setBuscaEncaixe(e.target.value);
+                      setEncaixeDropdownAberto(prev => ({ ...prev, [rota.id]: true }));
+                    }}
+                    onFocus={() => setEncaixeDropdownAberto(prev => ({ ...prev, [rota.id]: true }))}
+                    onBlur={() => setTimeout(() => setEncaixeDropdownAberto(prev => ({ ...prev, [rota.id]: false })), 200)}
+                    style={{ width: '100%', padding: '6px', borderRadius: '8px', border: '1px solid #e2d5c0', fontSize: '0.7rem' }}
+                  />
+                  {encaixeDropdownAberto[rota.id] && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      backgroundColor: '#fff',
+                      border: '1px solid #e2d5c0',
+                      borderRadius: '8px',
+                      marginTop: '4px',
+                      maxHeight: '200px',
+                      overflowY: 'auto',
+                      zIndex: 100,
+                      boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+                    }}>
+                      {clientes
+                        .filter(c => 
+                          (c.nomeFantasia?.toLowerCase().includes(buscaEncaixe.toLowerCase()) ||
+                          c.razaoSocial?.toLowerCase().includes(buscaEncaixe.toLowerCase())) &&
+                          !rota.clientes.some(rc => rc.id === c.id)
+                        )
+                        .map(c => {
                           const rotaOrigem = rotasSalvas.find(r => r.clientes.some(cl => cl.id === c.id));
-                          if (!rotaOrigem) return null;
-                          const jaEmExcecao = isClienteEmExcecao(c.id, rota.id);
+                          const jaEmEncaixe = isClienteEmExcecao(c.id, rota.id);
                           return (
-                            <option key={c.id} value={`${c.id}|${rotaOrigem.id}`} disabled={jaEmExcecao}>
-                              {c.razaoSocial} (rota: {rotaOrigem.nome}) {jaEmExcecao ? ' - já exceção ativa' : ''}
-                            </option>
+                            <div
+                              key={c.id}
+                              onClick={() => {
+                                adicionarEncaixe(c.id, rota.id, rotaOrigem?.id || null);
+                                setBuscaEncaixe('');
+                                setEncaixeDropdownAberto(prev => ({ ...prev, [rota.id]: false }));
+                              }}
+                              style={{
+                                padding: '8px 12px',
+                                cursor: jaEmEncaixe ? 'not-allowed' : 'pointer',
+                                borderBottom: '1px solid #f0e6d5',
+                                fontSize: '0.7rem',
+                                color: jaEmEncaixe ? '#aaa' : '#351000',
+                                backgroundColor: jaEmEncaixe ? '#f9f9f9' : '#fff'
+                              }}
+                            >
+                              {c.razaoSocial} {c.nomeFantasia ? `(${c.nomeFantasia})` : ''} {rotaOrigem ? `(rota: ${rotaOrigem.nome})` : '(sem rota)'} {jaEmEncaixe ? ' - já encaixe ativo' : ''}
+                            </div>
                           );
                         })}
-                      </select>
-                      <button 
-                        onClick={() => {
-                          const value = clienteSelecionadoExcecao[rota.id];
-                          if (!value) return alert('Selecione um cliente.');
-                          const [clienteId, rotaOrigemId] = value.split('|');
-                          adicionarExcecao(parseInt(clienteId), rota.id, parseInt(rotaOrigemId));
-                          setClienteSelecionadoExcecao(prev => ({ ...prev, [rota.id]: '' }));
-                        }}
-                        style={{ background: '#f4890f', color: '#fff', border: 'none', padding: '5px 12px', borderRadius: '10px', cursor: 'pointer', fontSize: '0.7rem' }}
-                      >
-                        Adicionar
-                      </button>
-                    </>
+                      {clientes.filter(c => 
+                        (c.nomeFantasia?.toLowerCase().includes(buscaEncaixe.toLowerCase()) ||
+                        c.razaoSocial?.toLowerCase().includes(buscaEncaixe.toLowerCase())) &&
+                        !rota.clientes.some(rc => rc.id === c.id)
+                      ).length === 0 && (
+                        <div style={{ padding: '8px 12px', fontSize: '0.7rem', color: '#aaa' }}>
+                          Nenhum cliente encontrado
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
@@ -483,6 +571,39 @@ export default function Rotas({
           );
         })}
       </div>
+
+      {/* Modal de Confirmação de Exclusão de Rota */}
+      {rotaParaDeletar && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.6)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: '#fff', borderRadius: '12px', padding: '24px',
+            width: '90%', maxWidth: '400px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)'
+          }}>
+            <h3 style={{ margin: '0 0 12px 0', color: '#0f172a' }}>Confirmar Exclusão</h3>
+            <p style={{ margin: '0 0 20px 0', color: '#475569' }}>
+              Tem certeza que deseja remover a rota <strong>{rotaParaDeletar.nome}</strong>?
+            </p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setRotaParaDeletar(null)}
+                style={{ padding: '10px 16px', border: '1px solid #cbd5e1', borderRadius: '6px', backgroundColor: '#fff', cursor: 'pointer' }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmarExcluirRota}
+                style={{ padding: '10px 16px', border: 'none', borderRadius: '6px', backgroundColor: '#dc3545', color: '#fff', cursor: 'pointer', fontWeight: 'bold' }}
+              >
+                Confirmar Exclusão
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Histórico Geral de Entregas */}
       <h3 style={{ color: '#351000', marginTop: '20px', marginBottom: '16px', fontSize: '1.4rem' }}>Histórico Geral de Entregas</h3>
