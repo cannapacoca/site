@@ -16,21 +16,57 @@ const DEFAULT_TEXTS = {
   cnpjText: "CNPJ: 21.520.975/0001-10"
 };
 
+const LOCAL_STORAGE_KEY = 'landing_page_config_local';
+
+let configTableAvailable = null;
+
+function isMissingTableError(error) {
+  return error?.code === 'PGRST205'
+    || error?.message?.includes("Could not find the table");
+}
+
+async function checkConfigTable() {
+  if (configTableAvailable !== null) return configTableAvailable;
+
+  const { error } = await supabase
+    .from('landing_page_config')
+    .select('key')
+    .limit(1);
+
+  configTableAvailable = !error || !isMissingTableError(error);
+  return configTableAvailable;
+}
+
+function saveLocalTexts(texts) {
+  localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({ ...DEFAULT_TEXTS, ...texts }));
+}
+
 export const landingPageService = {
+  async isConfigRemoteAvailable() {
+    return checkConfigTable();
+  },
+
   async getTexts() {
+    const remoteAvailable = await checkConfigTable();
+    if (!remoteAvailable) {
+      return this.getLocalTexts();
+    }
+
     try {
       const { data, error } = await supabase
         .from('landing_page_config')
         .select('*');
-      
+
       if (error) {
-        console.warn('Erro ao carregar textos do Supabase, usando localStorage/Padrão:', error);
+        if (isMissingTableError(error)) {
+          configTableAvailable = false;
+          return this.getLocalTexts();
+        }
+        console.warn('Erro ao carregar textos do Supabase, usando localStorage/padrão:', error);
         return this.getLocalTexts();
       }
 
       if (!data || data.length === 0) {
-        // Inicializar com os padrões no Supabase se possível
-        await this.saveAllTexts(DEFAULT_TEXTS);
         return DEFAULT_TEXTS;
       }
 
@@ -42,45 +78,71 @@ export const landingPageService = {
       });
       return texts;
     } catch (err) {
-      console.warn('Falha na requisição, usando localStorage/Padrão:', err);
+      console.warn('Falha na requisição, usando localStorage/padrão:', err);
       return this.getLocalTexts();
     }
   },
 
   async saveText(key, value) {
-    try {
-      const { error } = await supabase
-        .from('landing_page_config')
-        .upsert([{ key, value }], { onConflict: 'key' });
-      
-      if (error) {
-        throw error;
-      }
-    } catch (err) {
-      console.warn(`Erro ao salvar no Supabase para ${key}, salvando no localStorage:`, err);
+    const remoteAvailable = await checkConfigTable();
+    if (!remoteAvailable) {
       const local = this.getLocalTexts();
       local[key] = value;
-      localStorage.setItem('landing_page_config_local', JSON.stringify(local));
+      saveLocalTexts(local);
+      return { storage: 'local' };
     }
+
+    const { error } = await supabase
+      .from('landing_page_config')
+      .upsert([{ key, value }], { onConflict: 'key' });
+
+    if (error) {
+      console.warn(`Erro ao salvar no Supabase (${key}), usando localStorage:`, error);
+      const local = this.getLocalTexts();
+      local[key] = value;
+      saveLocalTexts(local);
+      return { storage: 'local' };
+    }
+
+    return { storage: 'supabase' };
   },
 
   async saveAllTexts(texts) {
-    const promises = Object.entries(texts).map(([key, value]) => this.saveText(key, value));
-    await Promise.all(promises);
+    const remoteAvailable = await checkConfigTable();
+    if (!remoteAvailable) {
+      saveLocalTexts(texts);
+      return { storage: 'local' };
+    }
+
+    const rows = Object.entries(texts).map(([key, value]) => ({ key, value }));
+    const { error } = await supabase
+      .from('landing_page_config')
+      .upsert(rows, { onConflict: 'key' });
+
+    if (error) {
+      console.warn('Erro ao salvar textos no Supabase, usando localStorage:', error);
+      saveLocalTexts(texts);
+      return { storage: 'local' };
+    }
+
+    saveLocalTexts(texts);
+    return { storage: 'supabase' };
   },
 
   async trackView(page = 'landing') {
-  try {
-    await supabase.rpc('track_page_view', {
-      page_name: page
-    });
-  } catch (err) {
-    console.warn('Erro ao registrar view:', err);
-  }
-},
+    const { error } = await supabase
+      .from('page_views')
+      .insert({ page });
+
+    if (error) {
+      console.warn('Erro ao registrar view:', error);
+      return false;
+    }
+    return true;
+  },
 
   getLocalTexts() {
-    const local = localStorage.getItem('landing_page_config_local');
+    const local = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (local) {
       try {
         return { ...DEFAULT_TEXTS, ...JSON.parse(local) };

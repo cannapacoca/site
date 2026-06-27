@@ -8,13 +8,18 @@ export default function ConfigLandingPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [statusMsg, setStatusMsg] = useState(null);
+  const [usesLocalStorage, setUsesLocalStorage] = useState(false);
 
   useEffect(() => {
     async function load() {
       try {
         setLoading(true);
-        const data = await landingPageService.getTexts();
+        const [data, remoteAvailable] = await Promise.all([
+          landingPageService.getTexts(),
+          landingPageService.isConfigRemoteAvailable(),
+        ]);
         setTexts(data);
+        setUsesLocalStorage(!remoteAvailable);
       } catch (err) {
         console.error(err);
       } finally {
@@ -38,7 +43,14 @@ export default function ConfigLandingPage() {
       setSaving(true);
       setStatusMsg({ type: 'info', text: 'Salvando alterações...' });
       await landingPageService.saveAllTexts(texts);
-      setStatusMsg({ type: 'success', text: 'Textos da Landing Page salvos com sucesso!' });
+      const remoteAvailable = await landingPageService.isConfigRemoteAvailable();
+      setUsesLocalStorage(!remoteAvailable);
+      setStatusMsg({
+        type: remoteAvailable ? 'success' : 'info',
+        text: remoteAvailable
+          ? 'Textos da Landing Page salvos no Supabase!'
+          : 'Textos salvos apenas neste navegador. Execute o SQL em supabase/landing_page_config.sql para persistir no banco.',
+      });
       setTimeout(() => setStatusMsg(null), 4000);
     } catch (err) {
       console.error(err);
@@ -67,6 +79,20 @@ export default function ConfigLandingPage() {
       <p style={{ color: '#64748b', fontSize: '0.9em', marginBottom: '20px' }}>
         Altere os textos exibidos na página inicial pública do site. As alterações serão salvas e refletidas imediatamente para os visitantes.
       </p>
+
+      {usesLocalStorage && (
+        <div style={{
+          padding: '12px 16px', borderRadius: '6px', marginBottom: '20px', fontSize: '0.9em',
+          backgroundColor: '#fef3c7', color: '#92400e', border: '1px solid #fde68a',
+          display: 'flex', alignItems: 'flex-start', gap: '8px',
+        }}>
+          <AlertCircle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
+          <span>
+            A tabela <strong>landing_page_config</strong> ainda não existe no Supabase.
+            Os textos ficam salvos só neste navegador. Rode o script <strong>supabase/landing_page_config.sql</strong> no SQL Editor do Supabase para habilitar o salvamento na nuvem.
+          </span>
+        </div>
+      )}
 
       {statusMsg && (
         <div style={{

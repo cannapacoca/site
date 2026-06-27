@@ -21,10 +21,9 @@ export default function LandingPage() {
     });
 
     useEffect(() => {
-        async function loadTexts() {
+        async function init() {
             try {
                 const data = await landingPageService.getTexts();
-                // Se ainda vier o formato antigo de texto único, fazemos um split amigável para não quebrar
                 if (data.historyText && !data.historyTextLeft) {
                     const meio = Math.floor(data.historyText.length / 2);
                     const quebra = data.historyText.indexOf(' ', meio);
@@ -35,14 +34,16 @@ export default function LandingPage() {
             } catch (err) {
                 console.error("Erro ao carregar textos da LandingPage:", err);
             }
-        }
-        loadTexts();
-        const viewed = localStorage.getItem('landing_viewed');
 
-        if (!viewed) {
-            landingPageService.trackView('landing');
-            localStorage.setItem('landing_viewed', '1');
+            const viewed = sessionStorage.getItem('landing_viewed');
+            if (!viewed) {
+                const ok = await landingPageService.trackView('landing');
+                if (ok) {
+                    sessionStorage.setItem('landing_viewed', '1');
+                }
+            }
         }
+        init();
     }, []);
 
     // Estilo base reutilizável para aplicar transição suave em interações

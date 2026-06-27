@@ -263,15 +263,15 @@ export default function Rotas({
   };
   
   const gerarLinkGoogleMaps = (clientesDaRota) => {
-    const origem = "Rua Frei Jerônimo de São Brás, 202 - Taubaté - SP";
+    const origem = "Rua Frei Jerônimo de São Brás, 202 - Taubaté";
     
-    // Construir waypoints corretamente (um endereço por waypoint)
+    // Construir waypoints corretamente (apenas rua, número, bairro e cidade)
     const waypoints = clientesDaRota.slice(0, -1).map(c => 
-      `${c.endereco}, ${c.numero}, ${c.bairro}, ${c.cidade}, ${c.cep}`
+      `${c.endereco}, ${c.numero}, ${c.bairro}, ${c.cidade}`
     ).join('|');
     
     const destino = clientesDaRota[clientesDaRota.length - 1];
-    const destinoStr = `${destino.endereco}, ${destino.numero}, ${destino.bairro}, ${destino.cidade}, ${destino.cep}`;
+    const destinoStr = `${destino.endereco}, ${destino.numero}, ${destino.bairro}, ${destino.cidade}`;
     
     let url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origem)}&destination=${encodeURIComponent(destinoStr)}&travelmode=driving&dir_action=navigate`;
     

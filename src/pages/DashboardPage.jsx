@@ -85,7 +85,8 @@ export default function DashboardPage({
   // ============================
   const [vendedor, setVendedor] = useState('');
   const [dataConclusao, setDataConclusao] = useState(new Date().toISOString().split('T')[0]);
-  const [filtroPeriodoCliente, setFiltroPeriodoCliente] = useState('mes'); // 'mes' ou 'semana'
+  const [clienteSelecionadoGrafico, setClienteSelecionadoGrafico] = useState(null);
+  const [buscaClienteGrafico, setBuscaClienteGrafico] = useState('');
   const [valorRota, setValorRota] = useState('');
   const [pageViews, setPageViews] = useState(0);
 
@@ -331,9 +332,13 @@ const handleDragEnd = async (event) => {
     const totalVendasNotaBoleto = vendasNotaBoleto.reduce((acc, v) => acc + v.totalVenda, 0);
     const totalLucroNotaBoleto = vendasNotaBoleto.reduce((acc, v) => acc + v.lucroBrutoTotal, 0);
 
-    const vendasSemNota = vendasMes.filter(v => v.emiteNota === false);
-    const totalVendasSemNota = vendasSemNota.reduce((acc, v) => acc + v.totalVenda, 0);
-    const totalLucroVendasSemNota = vendasSemNota.reduce((acc, v) => acc + v.lucroBrutoTotal, 0);
+    const vendasSemNotaPrazo = vendasMes.filter(v => v.emiteNota === false && v.formaPagamento === 'a_prazo');
+    const totalVendasSemNotaPrazo = vendasSemNotaPrazo.reduce((acc, v) => acc + v.totalVenda, 0);
+    const totalLucroSemNotaPrazo = vendasSemNotaPrazo.reduce((acc, v) => acc + v.lucroBrutoTotal, 0);
+
+    const vendasSemNotaAVista = vendasMes.filter(v => v.emiteNota === false && v.formaPagamento === 'a_vista');
+    const totalVendasSemNotaAVista = vendasSemNotaAVista.reduce((acc, v) => acc + v.totalVenda, 0);
+    const totalLucroSemNotaAVista = vendasSemNotaAVista.reduce((acc, v) => acc + v.lucroBrutoTotal, 0);
 
     const vendasAVista = vendasMes.filter(v => v.formaPagamento === 'a_vista');
     const totalVendasAVista = vendasAVista.reduce((acc, v) => acc + v.totalVenda, 0);
@@ -348,8 +353,10 @@ const handleDragEnd = async (event) => {
       totalLucroNotaPrazo,
       totalVendasNotaBoleto,
       totalLucroNotaBoleto,
-      totalVendasSemNota,
-      totalLucroVendasSemNota,
+      totalVendasSemNotaPrazo,
+      totalLucroSemNotaPrazo,
+      totalVendasSemNotaAVista,
+      totalLucroSemNotaAVista,
       totalVendasAVista,
       totalLucroAVista,
       vendasPorDia: vendasMes.reduce((acc, v) => {
@@ -386,45 +393,53 @@ const handleDragEnd = async (event) => {
     }));
   }, [historicoExecucaoRotas]);
 
-  // Dados de vendas por cliente
+  // Dados de vendas por mês do cliente selecionado
   const dadosVendasPorCliente = useMemo(() => {
-    const hoje = new Date();
-    let dataInicioFiltro;
+    if (!clienteSelecionadoGrafico) return [];
     
-    if (filtroPeriodoCliente === 'semana') {
-      dataInicioFiltro = new Date(hoje);
-      dataInicioFiltro.setDate(hoje.getDate() - 7);
-    } else {
-      dataInicioFiltro = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
-    }
+    const vendasCliente = vendasLancadas.filter(v => v.clienteId === clienteSelecionadoGrafico.id);
     
-    const vendasFiltradas = vendasLancadas.filter(v => {
+    const vendasPorMes = {};
+    vendasCliente.forEach(v => {
       const dataVenda = new Date(v.dataRecebimento || v.data);
-      return dataVenda >= dataInicioFiltro;
-    });
-    
-    const vendasPorCliente = {};
-    vendasFiltradas.forEach(v => {
-      const cliente = clientes.find(c => c.id === v.clienteId);
-      const nomeCliente = cliente?.nomeFantasia || cliente?.razaoSocial || 'Cliente desconhecido';
+      const chaveMes = `${dataVenda.getFullYear()}-${String(dataVenda.getMonth() + 1).padStart(2, '0')}`;
       
-      if (!vendasPorCliente[nomeCliente]) {
-        vendasPorCliente[nomeCliente] = { total: 0, lucro: 0, quantidade: 0 };
+      if (!vendasPorMes[chaveMes]) {
+        vendasPorMes[chaveMes] = { mes: chaveMes, total: 0, lucro: 0, quantidade: 0 };
       }
-      vendasPorCliente[nomeCliente].total += v.totalVenda;
-      vendasPorCliente[nomeCliente].lucro += v.lucroBrutoTotal;
-      vendasPorCliente[nomeCliente].quantidade += 1;
+      vendasPorMes[chaveMes].total += v.totalVenda;
+      vendasPorMes[chaveMes].lucro += v.lucroBrutoTotal;
+      vendasPorMes[chaveMes].quantidade += 1;
     });
     
-    return Object.entries(vendasPorCliente)
-      .map(([nome, dados]) => ({ 
-        nome: nome.length > 15 ? nome.substring(0, 4) + '...' : nome,
-        nomeCompleto: nome,
-        ...dados 
-      }))
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 10);
-  }, [vendasLancadas, clientes, filtroPeriodoCliente]);
+    return Object.values(vendasPorMes)
+      .sort((a, b) => a.mes.localeCompare(b.mes))
+      .map(d => ({
+        mes: new Date(d.mes + '-01').toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' }),
+        mesOriginal: d.mes,
+        ...d
+      }));
+  }, [vendasLancadas, clienteSelecionadoGrafico]);
+
+  const clientesFiltradosGrafico = useMemo(() => {
+    const termo = buscaClienteGrafico.trim().toLowerCase();
+    if (!termo) return clientes;
+    return clientes.filter(c =>
+      c.nomeFantasia?.toLowerCase().includes(termo) ||
+      c.razaoSocial?.toLowerCase().includes(termo)
+    );
+  }, [clientes, buscaClienteGrafico]);
+
+  const resumoClienteSelecionado = useMemo(() => {
+    if (!clienteSelecionadoGrafico) return null;
+    const vendas = vendasLancadas.filter(v => v.clienteId === clienteSelecionadoGrafico.id);
+    return {
+      totalFaturamento: vendas.reduce((acc, v) => acc + v.totalVenda, 0),
+      totalLucro: vendas.reduce((acc, v) => acc + v.lucroBrutoTotal, 0),
+      quantidade: vendas.length,
+      mesesComVenda: dadosVendasPorCliente.length,
+    };
+  }, [clienteSelecionadoGrafico, vendasLancadas, dadosVendasPorCliente]);
 
   const resumoRotasMes = useMemo(() => {
     const hoje = new Date();
@@ -450,10 +465,11 @@ const handleDragEnd = async (event) => {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', marginBottom: '32px' }}>
         <MetricCard title="Faturamento Mensal" value={`R$ ${metricasVendas.totalVendasMes.toFixed(2)}`} icon={<DollarSign size={24} />} color="#10b981" />
         <MetricCard title="Lucro Bruto Mensal" value={`R$ ${metricasVendas.totalLucroMes.toFixed(2)}`} icon={<TrendingUp size={24} />} color="#3b82f6" />
-        <MetricCard title="Vendas à Vista" value={`R$ ${metricasVendas.totalVendasAVista.toFixed(2)}`} subtitle={`Lucro: R$ ${metricasVendas.totalLucroAVista.toFixed(2)}`} icon={<CreditCard size={24} />} color="#f59e0b" />
+        <MetricCard title="Vendas à Vista" value={`R$ ${metricasVendas.totalVendasAVista.toFixed(2)}`} subtitle={`Lucro: R$ ${metricasVendas.totalLucroAVista.toFixed(2)}`} icon={<CreditCard size={24} />} color="#14b8a6" />
         <MetricCard title="Vendas com Nota (Prazo)" value={`R$ ${metricasVendas.totalVendasNotaPrazo.toFixed(2)}`} subtitle={`Lucro: R$ ${metricasVendas.totalLucroNotaPrazo.toFixed(2)}`} icon={<FileText size={24} />} color="#8b5cf6" />
         <MetricCard title="Vendas com Nota (Boleto)" value={`R$ ${metricasVendas.totalVendasNotaBoleto.toFixed(2)}`} subtitle={`Lucro: R$ ${metricasVendas.totalLucroNotaBoleto.toFixed(2)}`} icon={<FileText size={24} />} color="#6366f1" />
-        <MetricCard title="Vendas sem Nota" value={`R$ ${metricasVendas.totalVendasSemNota.toFixed(2)}`} subtitle={`Lucro: R$ ${metricasVendas.totalLucroVendasSemNota.toFixed(2)}`} icon={<ShoppingBag size={24} />} color="#ef4444" />
+        <MetricCard title="Vendas sem Nota (Prazo)" value={`R$ ${metricasVendas.totalVendasSemNotaPrazo.toFixed(2)}`} subtitle={`Lucro: R$ ${metricasVendas.totalLucroSemNotaPrazo.toFixed(2)}`} icon={<ShoppingBag size={24} />} color="#ef4444" />
+        <MetricCard title="Vendas sem Nota (À Vista)" value={`R$ ${metricasVendas.totalVendasSemNotaAVista.toFixed(2)}`} subtitle={`Lucro: R$ ${metricasVendas.totalLucroSemNotaAVista.toFixed(2)}`} icon={<CreditCard size={24} />} color="#f59e0b" />
         <MetricCard title="Amendoim Doce (Praliné)" value={`R$ ${metricasVendas.totalAmendoimDoce.toFixed(2)}`} subtitle={`Lucro: R$ ${metricasVendas.totalLucroAmendoimDoce.toFixed(2)}`} icon={<TrendingUp size={24} />} color="#ec4899" />
         <MetricCard
   title="Visitas Landing Page"
@@ -506,57 +522,105 @@ const handleDragEnd = async (event) => {
         <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
-              <TrendingUp size={20} /> Vendas por Cliente
+              <TrendingUp size={20} /> Vendas por Cliente (Histórico Mensal)
             </h3>
-            <div>
-              <button 
-                onClick={() => setFiltroPeriodoCliente('mes')}
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: '6px',
-                  border: '1px solid #cbd5e1',
-                  background: filtroPeriodoCliente === 'mes' ? '#3b82f6' : '#fff',
-                  color: filtroPeriodoCliente === 'mes' ? '#fff' : '#334155',
-                  cursor: 'pointer',
-                  marginRight: '8px'
-                }}
-              >
-                Mês
-              </button>
-              <button 
-                onClick={() => setFiltroPeriodoCliente('semana')}
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: '6px',
-                  border: '1px solid #cbd5e1',
-                  background: filtroPeriodoCliente === 'semana' ? '#3b82f6' : '#fff',
-                  color: filtroPeriodoCliente === 'semana' ? '#fff' : '#334155',
-                  cursor: 'pointer'
-                }}
-              >
-                Semana
-              </button>
-            </div>
           </div>
-          {dadosVendasPorCliente.length === 0 ? (
-            <p style={{ color: '#64748b', textAlign: 'center', padding: '40px' }}>Nenhuma venda registrada neste período.</p>
-          ) : (
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={dadosVendasPorCliente}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="nome" tick={{ fontSize: 10 }} />
-                <YAxis />
-                <Tooltip 
-                  formatter={(value) => `R$ ${value.toFixed(2)}`}
-                  labelFormatter={(label) => {
-                    const item = dadosVendasPorCliente.find(d => d.nome === label);
-                    return item?.nomeCompleto || label;
+          <div style={{ marginBottom: '16px' }}>
+            <input
+              type="text"
+              placeholder="Buscar cliente por nome ou razão social..."
+              value={buscaClienteGrafico}
+              onChange={(e) => setBuscaClienteGrafico(e.target.value)}
+              style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', width: '100%', fontSize: '0.9rem', marginBottom: '8px' }}
+            />
+            {!clienteSelecionadoGrafico ? (
+              <div style={{ maxHeight: '180px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '6px' }}>
+                {clientesFiltradosGrafico.length === 0 ? (
+                  <p style={{ color: '#64748b', textAlign: 'center', padding: '16px', margin: 0 }}>Nenhum cliente encontrado.</p>
+                ) : (
+                  clientesFiltradosGrafico.map(c => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => {
+                        setClienteSelecionadoGrafico(c);
+                        setBuscaClienteGrafico(c.nomeFantasia || c.razaoSocial);
+                      }}
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '10px 12px',
+                        border: 'none',
+                        borderBottom: '1px solid #f1f5f9',
+                        background: '#fff',
+                        cursor: 'pointer',
+                        fontSize: '0.9rem',
+                      }}
+                    >
+                      <strong>{c.nomeFantasia || c.razaoSocial}</strong>
+                      {c.nomeFantasia && c.razaoSocial ? ` — ${c.razaoSocial}` : ''}
+                    </button>
+                  ))
+                )}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '10px 12px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                <span style={{ fontWeight: 600, color: '#1e293b' }}>
+                  {clienteSelecionadoGrafico.nomeFantasia || clienteSelecionadoGrafico.razaoSocial}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setClienteSelecionadoGrafico(null);
+                    setBuscaClienteGrafico('');
                   }}
-                />
-                <Legend />
-                <Bar dataKey="total" fill="#10b981" name="Faturamento" />
-              </BarChart>
-            </ResponsiveContainer>
+                  style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer', fontSize: '0.85rem' }}
+                >
+                  Trocar
+                </button>
+              </div>
+            )}
+          </div>
+          {!clienteSelecionadoGrafico ? (
+            <p style={{ color: '#64748b', textAlign: 'center', padding: '40px' }}>Busque e selecione um cliente para comparar o histórico mensal dele.</p>
+          ) : (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', marginBottom: '16px' }}>
+                <div style={{ padding: '12px', background: '#f8fafc', borderRadius: '8px' }}>
+                  <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b' }}>Faturamento total</p>
+                  <p style={{ margin: '4px 0 0', fontWeight: 700, color: '#10b981' }}>R$ {resumoClienteSelecionado.totalFaturamento.toFixed(2)}</p>
+                </div>
+                <div style={{ padding: '12px', background: '#f8fafc', borderRadius: '8px' }}>
+                  <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b' }}>Lucro total</p>
+                  <p style={{ margin: '4px 0 0', fontWeight: 700, color: '#3b82f6' }}>R$ {resumoClienteSelecionado.totalLucro.toFixed(2)}</p>
+                </div>
+                <div style={{ padding: '12px', background: '#f8fafc', borderRadius: '8px' }}>
+                  <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b' }}>Vendas</p>
+                  <p style={{ margin: '4px 0 0', fontWeight: 700, color: '#1e293b' }}>{resumoClienteSelecionado.quantidade}</p>
+                </div>
+                <div style={{ padding: '12px', background: '#f8fafc', borderRadius: '8px' }}>
+                  <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b' }}>Meses com venda</p>
+                  <p style={{ margin: '4px 0 0', fontWeight: 700, color: '#1e293b' }}>{resumoClienteSelecionado.mesesComVenda}</p>
+                </div>
+              </div>
+              {dadosVendasPorCliente.length === 0 ? (
+                <p style={{ color: '#64748b', textAlign: 'center', padding: '24px 40px 8px', margin: 0 }}>
+                  Nenhuma venda registrada para este cliente ainda.
+                </p>
+              ) : null}
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={dadosVendasPorCliente}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="mes" tick={{ fontSize: 10 }} />
+                  <YAxis />
+                  <Tooltip formatter={(value) => `R$ ${Number(value).toFixed(2)}`} />
+                  <Legend />
+                  <Bar dataKey="total" fill="#10b981" name="Faturamento" />
+                  <Bar dataKey="lucro" fill="#3b82f6" name="Lucro" />
+                </BarChart>
+              </ResponsiveContainer>
+            </>
           )}
         </div>
       </div>
