@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Calendar, DollarSign, TrendingUp, ShoppingBag, FileText, CreditCard,
-  BarChart3, X, AlertCircle
+  BarChart3, X, AlertCircle, Maximize2
 } from 'lucide-react';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -43,6 +43,8 @@ function RotaDraggable({ rota, children }) {
 
   const style = {
     transform: CSS.Translate.toString(transform),
+    position: 'relative',
+    touchAction: 'none'
   };
 
   return (
@@ -56,17 +58,18 @@ function RotaDraggable({ rota, children }) {
     </div>
   );
 }
- function DiaDroppable({ id, children }) {
-              const { setNodeRef } = useDroppable({
-                id,
-              });
 
-              return (
-                <div ref={setNodeRef}>
-                  {children}
-                </div>
-              );
-              }
+function DiaDroppable({ id, children }) {
+  const { setNodeRef } = useDroppable({
+    id,
+  });
+
+  return (
+    <div ref={setNodeRef}>
+      {children}
+    </div>
+  );
+}
 
 export default function DashboardPage({
   rotasSalvas = [],
@@ -107,19 +110,20 @@ export default function DashboardPage({
 
   // Calcular ocorrências de rotas baseado em Data de Início + frequência
   useEffect(() => {
-  async function loadViews() {
-    const { count, error } = await supabase
-      .from('page_views')
-      .select('*', { count: 'exact', head: true })
-      .eq('page', 'landing');
+    async function loadViews() {
+      const { count, error } = await supabase
+        .from('page_views')
+        .select('*', { count: 'exact', head: true })
+        .eq('page', 'landing');
 
-    if (!error) {
-      setPageViews(count || 0);
+      if (!error) {
+        setPageViews(count || 0);
+      }
     }
-  }
 
-  loadViews();
-}, []);
+    loadViews();
+  }, []);
+
   useEffect(() => {
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
@@ -161,11 +165,11 @@ export default function DashboardPage({
         if (!jaExecutada) {
           if (!novoMap[dataStr]) novoMap[dataStr] = [];
           novoMap[dataStr].push({
-  ...rota,
-  dataPrevista: new Date(dataAtual),
-  dataPrevistaStr: dataStr,
-  indiceOcorrencia
-});
+            ...rota,
+            dataPrevista: new Date(dataAtual),
+            dataPrevistaStr: dataStr,
+            indiceOcorrencia
+          });
         }
         
         // Avançar para a próxima ocorrência
@@ -194,47 +198,47 @@ export default function DashboardPage({
   // 3. MODAL DE ROTA - REGISTRAR EXECUÇÃO
   // ============================
 
-const handleDragEnd = async (event) => {
-  const { active, over } = event;
+  const handleDragEnd = async (event) => {
+    const { active, over } = event;
 
-  if (!over) return;
+    if (!over) return;
 
-  const rota = active.data.current;
+    const rota = active.data.current;
 
-  // Soltou no mesmo dia
-  if (rota.dataPrevistaStr === over.id) return;
+    // Soltou no mesmo dia
+    if (rota.dataPrevistaStr === over.id) return;
 
-  // 1. Criamos a data corrigida para o fuso local PRIMEIRO
-  const [ano, mes, dia] = over.id.split("-").map(Number);
-  const novaData = new Date(ano, mes - 1, dia);
+    // 1. Criamos a data corrigida para o fuso local PRIMEIRO
+    const [ano, mes, dia] = over.id.split("-").map(Number);
+    const novaData = new Date(ano, mes - 1, dia);
 
-  // 2. Agora o toLocaleDateString() vai exibir o dia certinho no confirm
-  const confirmar = window.confirm(
-    `Mover a rota "${rota.nome}" para ${novaData.toLocaleDateString()}?\n\n` +
-    "Isso alterará todas as ocorrências futuras dessa rota."
-  );
+    // 2. Agora o toLocaleDateString() vai exibir o dia certinho no confirm
+    const confirmar = window.confirm(
+      `Mover a rota "${rota.nome}" para ${novaData.toLocaleDateString()}?\n\n` +
+      "Isso alterará todas as ocorrências futuras dessa rota."
+    );
 
-  if (!confirmar) return;
+    if (!confirmar) return;
 
-  // 3. Segue o baile com a lógica que já estava certa
-  const novaDataInicio = new Date(novaData);
+    // 3. Segue o baile com a lógica que já estava certa
+    const novaDataInicio = new Date(novaData);
 
-  novaDataInicio.setDate(
-    novaDataInicio.getDate() -
-    rota.indiceOcorrencia * rota.frequencia
-  );
+    novaDataInicio.setDate(
+      novaDataInicio.getDate() -
+      rota.indiceOcorrencia * rota.frequencia
+    );
 
-  try {
-    await onUpdateRota(rota.id, {
-      dataInicio: formatarData(novaDataInicio)
-    });
+    try {
+      await onUpdateRota(rota.id, {
+        dataInicio: formatarData(novaDataInicio)
+      });
 
-    alert("Rota movida com sucesso!");
-  } catch (e) {
-    console.error(e);
-    alert("Erro ao mover a rota.");
-  }
-};
+      alert("Rota movida com sucesso!");
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao mover a rota.");
+    }
+  };
 
   const registrarExecucaoRota = async (rota, dataPrevista) => {
     if (!valorRota) {
@@ -266,7 +270,6 @@ const handleDragEnd = async (event) => {
 
     try {
       if (modalAberto?.registroExistente) {
-        // Se já existe, primeiro deleta (ou poderia fazer update, mas o serviço não tem update implementado - opcional)
         await onDeletarExecucaoRota(novoRegistro.id);
       }
       await onAdicionarExecucaoRota(novoRegistro);
@@ -299,7 +302,7 @@ const handleDragEnd = async (event) => {
   };
 
   // ============================
-  // 4. MÉTRICAS DE VENDAS (mantido igual)
+  // 4. MÉTRICAS DE VENDAS
   // ============================
   const metricasVendas = useMemo(() => {
     const hoje = new Date();
@@ -374,7 +377,7 @@ const handleDragEnd = async (event) => {
     for (let i = 29; i >= 0; i--) {
       const data = new Date();
       data.setDate(data.getDate() - i);
-      const dataStr = formatarData(data)
+      const dataStr = formatarData(data);
       const dados = metricasVendas.vendasPorDia[dataStr] || { total: 0, lucro: 0 };
       ultimos30Dias.push({ data: dataStr, total: dados.total, lucro: dados.lucro });
     }
@@ -455,13 +458,13 @@ const handleDragEnd = async (event) => {
   }, [historicoExecucaoRotas]);
 
   // ============================
-  // RENDER (praticamente igual, só ajuste nas chamadas de função)
+  // RENDER
   // ============================
   return (
     <div style={{ padding: '20px', maxWidth: '1400px', margin: '0 auto' }}>
       <h1 style={{ marginBottom: '24px', color: '#1e293b' }}>Dashboard Gerencial</h1>
 
-      {/* Cards de métricas (igual) */}
+      {/* Cards de métricas */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', marginBottom: '32px' }}>
         <MetricCard title="Faturamento Mensal" value={`R$ ${metricasVendas.totalVendasMes.toFixed(2)}`} icon={<DollarSign size={24} />} color="#10b981" />
         <MetricCard title="Lucro Bruto Mensal" value={`R$ ${metricasVendas.totalLucroMes.toFixed(2)}`} icon={<TrendingUp size={24} />} color="#3b82f6" />
@@ -472,11 +475,11 @@ const handleDragEnd = async (event) => {
         <MetricCard title="Vendas sem Nota (À Vista)" value={`R$ ${metricasVendas.totalVendasSemNotaAVista.toFixed(2)}`} subtitle={`Lucro: R$ ${metricasVendas.totalLucroSemNotaAVista.toFixed(2)}`} icon={<CreditCard size={24} />} color="#f59e0b" />
         <MetricCard title="Amendoim Doce (Praliné)" value={`R$ ${metricasVendas.totalAmendoimDoce.toFixed(2)}`} subtitle={`Lucro: R$ ${metricasVendas.totalLucroAmendoimDoce.toFixed(2)}`} icon={<TrendingUp size={24} />} color="#ec4899" />
         <MetricCard
-  title="Visitas Landing Page"
-  value={pageViews}
-  icon={<BarChart3 size={24} />}
-  color="#6366f1"
-/>
+          title="Visitas Landing Page"
+          value={pageViews}
+          icon={<BarChart3 size={24} />}
+          color="#6366f1"
+        />
       </div>
 
       {/* Gráficos */}
@@ -632,7 +635,7 @@ const handleDragEnd = async (event) => {
         <p><strong>Lucro líquido:</strong> R$ {resumoRotasMes.lucroMes.toFixed(2)}</p>
       </div>
 
-      {/* Calendário de Rotas Previstas (igual, mas usando a função isRotaExecutadaNaData com historicoExecucaoRotas vindo de props) */}
+      {/* Calendário de Rotas Previstas */}
       <div style={{ background: '#fff', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', padding: '20px', marginBottom: '32px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
           <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -649,50 +652,95 @@ const handleDragEnd = async (event) => {
             <div key={day} style={{ fontWeight: 'bold', color: '#64748b' }}>{day}</div>
           ))}
         </div>
+        
         <DndContext
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
         >
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '8px' }}>
-          {todosDias.map((dia, idx) => {
-           
-            if (!dia) return <div key={`empty-${idx}`} style={{ background: '#f8fafc', borderRadius: '8px', minHeight: '100px' }} />;
-            const dataStr = formatarData(dia)
-            const rotasDia = rotasPorDia[dataStr] || [];
-            const isHoje = dataStr === formatarData(new Date());
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '8px' }}>
+            {todosDias.map((dia, idx) => {
+              if (!dia) return <div key={`empty-${idx}`} style={{ background: '#f8fafc', borderRadius: '8px', minHeight: '100px' }} />;
+              const dataStr = formatarData(dia);
+              const rotasDia = rotasPorDia[dataStr] || [];
+              const isHoje = dataStr === formatarData(new Date());
 
-            return (
-              <DiaDroppable id={dataStr}>
-              <div key={dataStr} style={{ background: '#f8fafc', borderRadius: '8px', padding: '8px', minHeight: '100px', border: isHoje ? '2px solid #3b82f6' : '1px solid #e2e8f0', overflow: 'auto' }}>
-                <div style={{ fontWeight: 'bold', marginBottom: '6px' }}>{dia.getDate()}</div>
-                {rotasDia.map(rota => {
-                  const jaExecutada = isRotaExecutadaNaData(rota.id, dia);
-                  return (
-                    <RotaDraggable rota={rota}>
-                    <button
-                      key={rota.id}
-                      onClick={() => setModalAberto({ rota, dataPrevista: dia, registroExistente: historicoExecucaoRotas.find(h => h.rotaId === rota.id && h.dataExecucao === formatarData(dia)) })}
-                      style={{ display: 'block', width: '100%', textAlign: 'left', background: jaExecutada ? '#dcfce7' : '#e0f2fe', border: 'none', borderRadius: '4px', padding: '4px 6px', marginBottom: '4px', fontSize: '0.75rem', cursor: jaExecutada ? 'default' : 'pointer', color: jaExecutada ? '#166534' : '#1e40af' }}
-                    >
-                      🚚 {rota.nome || 'Sem nome'}
-                      {jaExecutada && (
-                        <div style={{ fontSize: '0.65rem', marginTop: 2, color: '#166534' }}>
-                          ✓ {historicoExecucaoRotas.find(h => h.rotaId === rota.id && h.dataExecucao === formatarData(dia))?.dataConclusao}
-                        </div>
-                      )}
-                    </button>
-                    </RotaDraggable>
-                  );
-                })}
-              </div>
-              </DiaDroppable>
-            );
-          })}
-        </div>
+              return (
+                <DiaDroppable key={dataStr} id={dataStr}>
+                  <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '8px', minHeight: '100px', border: isHoje ? '2px solid #3b82f6' : '1px solid #e2e8f0', overflow: 'auto' }}>
+                    <div style={{ fontWeight: 'bold', marginBottom: '6px' }}>{dia.getDate()}</div>
+                    {rotasDia.map(rota => {
+                      const jaExecutada = isRotaExecutadaNaData(rota.id, dia);
+                      const registroExistente = historicoExecucaoRotas.find(
+                        h => h.rotaId === rota.id && h.dataExecucao === formatarData(dia)
+                      );
+
+                      return (
+                        <RotaDraggable key={`${rota.id}-${formatarData(dia)}`} rota={rota}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              background: jaExecutada ? '#dcfce7' : '#e0f2fe',
+                              border: '1px solid',
+                              borderColor: jaExecutada ? '#86efac' : '#bae6fd',
+                              borderRadius: '6px',
+                              padding: '6px 8px',
+                              marginBottom: '6px',
+                              fontSize: '0.75rem',
+                              color: jaExecutada ? '#166534' : '#1e40af',
+                              cursor: 'grab'
+                            }}
+                          >
+                            <div style={{ flex: 1, paddingRight: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              <span>🚚 {rota.nome || 'Sem nome'}</span>
+                              {jaExecutada && (
+                                <div style={{ fontSize: '0.65rem', marginTop: 2, color: '#166534' }}>
+                                  ✓ {registroExistente?.dataConclusao}
+                                </div>
+                              )}
+                            </div>
+
+                            <button
+                              type="button"
+                              onPointerDown={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setModalAberto({
+                                  rota,
+                                  dataPrevista: dia,
+                                  registroExistente
+                                });
+                              }}
+                              title="Expandir rota"
+                              style={{
+                                background: 'rgba(255, 255, 255, 0.6)',
+                                border: 'none',
+                                borderRadius: '4px',
+                                padding: '3px',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: jaExecutada ? '#166534' : '#1e40af',
+                                transition: 'background 0.2s'
+                              }}
+                            >
+                              <Maximize2 size={12} />
+                            </button>
+                          </div>
+                        </RotaDraggable>
+                      );
+                    })}
+                  </div>
+                </DiaDroppable>
+              );
+            })}
+          </div>
         </DndContext>
       </div>
 
-      {/* MODAL de registro de execução (com as novas funções) */}
+      {/* MODAL de registro de execução */}
       {modalAberto && (
         <div style={modalOverlayStyle}>
           <div style={modalContentStyle}>
@@ -702,7 +750,7 @@ const handleDragEnd = async (event) => {
             </div>
             <p><strong>Rota:</strong> {modalAberto.rota.nome || 'Sem nome'}</p>
             <p><strong>Data prevista:</strong> {modalAberto.dataPrevista.toLocaleDateString()}</p>
-            <p><strong>Clientes:</strong> {modalAberto.rota.clientes.map(c => c.razaoSocial).join(', ')}</p>
+            <p><strong>Clientes:</strong> {modalAberto.rota.clientes?.map(c => c.razaoSocial).join(', ') || 'Nenhum'}</p>
 
             <div style={{ margin: '16px 0' }}>
               <label style={labelStyle}>💰 Valor ganho na rota (R$)</label>
@@ -747,7 +795,7 @@ const handleDragEnd = async (event) => {
   );
 }
 
-// Componentes auxiliares (MetricCard, estilos) - iguais aos originais
+// Componentes auxiliares
 function MetricCard({ title, value, subtitle, icon, color }) {
   return (
     <div style={{ background: '#fff', borderRadius: '12px', padding: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: `4px solid ${color}` }}>

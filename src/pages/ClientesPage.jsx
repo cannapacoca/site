@@ -40,20 +40,21 @@ export default function ClientesPage({
     setFormData(prev => ({ ...prev, cep: value }));
   };
 
+  // Correção na máscara de CNPJ
   const handleCnpjChange = (e) => {
     let value = e.target.value.replace(/\D/g, '');
     if (value.length > 14) value = value.slice(0, 14);
+
     if (value.length > 12) {
-      value = value.slice(0, 12) + '-' + value.slice(12);
-    }
-    if (value.length > 8) {
-      value = value.slice(0, 8) + '/' + value.slice(8);
-    }
-    if (value.length > 5) {
-      value = value.slice(0, 2) + '.' + value.slice(2, 5) + '.' + value.slice(5, 8) + '/' + value.slice(8, 12) + '-' + value.slice(12);
+      value = value.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{1,2})$/, '$1.$2.$3/$4-$5');
+    } else if (value.length > 8) {
+      value = value.replace(/^(\d{2})(\d{3})(\d{3})(\d{1,4})$/, '$1.$2.$3/$4');
+    } else if (value.length > 5) {
+      value = value.replace(/^(\d{2})(\d{3})(\d{1,3})$/, '$1.$2.$3');
     } else if (value.length > 2) {
-      value = value.slice(0, 2) + '.' + value.slice(2);
+      value = value.replace(/^(\d{2})(\d{1,3})$/, '$1.$2');
     }
+
     setFormData(prev => ({ ...prev, cnpj: value }));
   };
 
@@ -91,8 +92,20 @@ export default function ClientesPage({
 
   const handleEdit = (cliente) => {
     setEditingId(cliente.id);
-    setFormData(cliente);
+    setFormData({
+      ...initialFormState,
+      ...cliente,
+      tipoCliente: cliente.tipoCliente || ''
+    });
     setIsFormOpen(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleNovoCliente = () => {
+    setEditingId(null);
+    setFormData(initialFormState);
+    setIsFormOpen(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleDelete = async (id) => {
@@ -118,13 +131,17 @@ export default function ClientesPage({
     window.open(url, '_blank');
   };
 
-  const clientesFiltrados = clientes.filter(c => 
-    (c.razaoSocial?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.nomeFantasia?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.cnpj?.includes(searchTerm) ||
-    c.email?.toLowerCase().includes(searchTerm.toLowerCase())) &&
-    (filtroStatus === '' || c.ativo === filtroStatus)
-  );
+  // Ordena alfabeticamente pela Razão Social e filtra
+  const clientesFiltrados = clientes
+    .slice()
+    .sort((a, b) => (a.razaoSocial || '').localeCompare(b.razaoSocial || '', 'pt-BR', { sensitivity: 'base' }))
+    .filter(c => 
+      (c.razaoSocial?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.nomeFantasia?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.cnpj?.includes(searchTerm) ||
+      c.email?.toLowerCase().includes(searchTerm.toLowerCase())) &&
+      (filtroStatus === '' || c.ativo === filtroStatus)
+    );
 
   return (
     <div style={{ marginTop: '20px' }}>
@@ -132,7 +149,7 @@ export default function ClientesPage({
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px', marginBottom: '20px' }}>
         <h2 style={{ margin: 0, color: '#1e293b' }}>Gestão de Clientes ({clientes.length})</h2>
         <button
-          onClick={() => { setEditingId(null); setFormData(initialFormState); setIsFormOpen(true); }}
+          onClick={handleNovoCliente}
           style={{
             backgroundColor: '#28a745', color: '#fff', border: 'none', borderRadius: '6px',
             padding: '10px 16px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 'bold'
@@ -180,7 +197,7 @@ export default function ClientesPage({
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '15px', marginBottom: '20px' }}>
               <div>
                 <label style={labelStyle}>Razão Social *</label>
-                <input required type="text" name="razaoSocial" value={formData.razaoSocial} onChange={handleChange} style={inputStyle} />
+                <input type="text" name="razaoSocial" value={formData.razaoSocial} onChange={handleChange} style={inputStyle} />
               </div>
               <div>
                 <label style={labelStyle}>Nome Fantasia</label>
@@ -188,7 +205,7 @@ export default function ClientesPage({
               </div>
               <div>
                 <label style={labelStyle}>CNPJ *</label>
-                <input required type="text" name="cnpj" value={formData.cnpj} onChange={handleCnpjChange} style={inputStyle} placeholder="00.000.000/0000-00" maxLength="18" />
+                <input type="text" name="cnpj" value={formData.cnpj} onChange={handleCnpjChange} style={inputStyle} placeholder="00.000.000/0000-00" maxLength="18" />
               </div>
               <div>
                 <label style={labelStyle}>IE</label>
@@ -196,27 +213,27 @@ export default function ClientesPage({
               </div>
               <div>
                 <label style={labelStyle}>Endereço *</label>
-                <input required type="text" name="endereco" value={formData.endereco} onChange={handleChange} style={inputStyle} />
+                <input type="text" name="endereco" value={formData.endereco} onChange={handleChange} style={inputStyle} />
               </div>
               <div>
                 <label style={labelStyle}>Número *</label>
-                <input required type="text" name="numero" value={formData.numero} onChange={handleChange} style={inputStyle} />
+                <input type="text" name="numero" value={formData.numero} onChange={handleChange} style={inputStyle} />
               </div>
               <div>
                 <label style={labelStyle}>Bairro *</label>
-                <input required type="text" name="bairro" value={formData.bairro} onChange={handleChange} style={inputStyle} />
+                <input type="text" name="bairro" value={formData.bairro} onChange={handleChange} style={inputStyle} />
               </div>
               <div>
                 <label style={labelStyle}>Cidade *</label>
-                <input required type="text" name="cidade" value={formData.cidade} onChange={handleChange} style={inputStyle} />
+                <input type="text" name="cidade" value={formData.cidade} onChange={handleChange} style={inputStyle} />
               </div>
               <div>
                 <label style={labelStyle}>UF *</label>
-                <input required type="text" name="uf" value={formData.uf} onChange={handleChange} style={inputStyle} maxLength="2" />
+                <input type="text" name="uf" value={formData.uf} onChange={handleChange} style={inputStyle} maxLength="2" />
               </div>
               <div>
                 <label style={labelStyle}>CEP *</label>
-                <input required type="text" name="cep" value={formData.cep} onChange={handleCepChange} style={inputStyle} placeholder="00000-000" maxLength="9" />
+                <input type="text" name="cep" value={formData.cep} onChange={handleCepChange} style={inputStyle} placeholder="00000-000" maxLength="9" />
               </div>
               <div>
                 <label style={labelStyle}>Telefone</label>
@@ -228,7 +245,7 @@ export default function ClientesPage({
               </div>
               <div>
                 <label style={labelStyle}>Tipo de Cliente *</label>
-                <select required name="tipoCliente" value={formData.tipoCliente} onChange={handleChange} style={inputStyle}>
+                <select name="tipoCliente" value={formData.tipoCliente} onChange={handleChange} style={inputStyle}>
                   <option value="">-- Selecione --</option>
                   <option value="individual">Individual</option>
                   <option value="pequeno_comercio">Pequeno Comércio</option>
@@ -242,7 +259,7 @@ export default function ClientesPage({
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', marginBottom: '20px', backgroundColor: '#f8fafc', padding: '12px', borderRadius: '6px' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <label style={labelStyle}>Status *</label>
-                <select required name="ativo" value={formData.ativo} onChange={handleChange} style={{ ...inputStyle, width: 'auto', minWidth: '150px' }}>
+                <select name="ativo" value={formData.ativo} onChange={handleChange} style={{ ...inputStyle, width: 'auto', minWidth: '150px' }}>
                   <option value="ativo">Ativo</option>
                   <option value="inativo">Inativo</option>
                   <option value="morto">Morto</option>
@@ -293,8 +310,7 @@ export default function ClientesPage({
             boxShadow: '0 1px 3px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between'
           }}>
             <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                <span style={{ fontSize: '0.8em', color: statusColors.text, fontWeight: 'bold' }}>ID: {cliente.id}</span>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '8px' }}>
                 <span style={{
                   fontSize: '0.75em', padding: '3px 8px', borderRadius: '12px', fontWeight: 'bold',
                   backgroundColor: statusColors.bg, color: statusColors.text, border: `1px solid ${statusColors.text}30`

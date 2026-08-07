@@ -40,6 +40,8 @@ export const initialDataService = {
           emite_nota: cliente.emiteNota,
           emissao_bolet: cliente.emissaoBolet,
           a_vista: cliente.aVista,
+          a_prazo: cliente.aPrazo,
+          tipo_cliente: cliente.tipoCliente,
           observacoes: cliente.observacoes,
         }]);
       }
@@ -121,7 +123,7 @@ export const initialDataService = {
       supabase.from('produtos_finais').select('*').order('id'),
     ]);
 
-    // Converter para camelCase (simplificado, você pode usar funções separadas)
+    // Converter para camelCase (incluídos tipoCliente e aPrazo)
     const clientes = (clientesRaw.data || []).map(c => ({
       id: c.id,
       razaoSocial: c.razao_social,
@@ -140,6 +142,8 @@ export const initialDataService = {
       emiteNota: c.emite_nota,
       emissaoBolet: c.emissao_bolet,
       aVista: c.a_vista,
+      aPrazo: c.a_prazo,
+      tipoCliente: c.tipo_cliente,
       observacoes: c.observacoes,
     }));
 

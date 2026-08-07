@@ -1,4 +1,3 @@
-// src/pages/Rotas.jsx
 import React, { useState, useEffect } from 'react';
 
 export default function Rotas({ 
@@ -36,46 +35,14 @@ export default function Rotas({
     entregaAntecipada: null,
     excecaoId: null
   });
-  const [valorRota, setValorRota] = useState('');
   
   // Estado para controle de seleção de cliente para encaixe
-  const [clienteSelecionadoEncaixe, setClienteSelecionadoEncaixe] = useState({});
   const [buscaEncaixe, setBuscaEncaixe] = useState('');
   const [encaixeDropdownAberto, setEncaixeDropdownAberto] = useState({});
   
   // Geração de ID único
   const gerarIdUnico = () => {
     return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  };
-  
-  // Registrar entrega
-  const registrarEntrega = async (clienteId, clienteNome, rotaId, tipo, excecaoId = null) => {
-    const hoje = new Date().toISOString().split('T')[0];
-    const novaEntrega = { 
-      id: gerarIdUnico(), 
-      clienteId, 
-      clienteNome, 
-      data: hoje,
-      rotaId: rotaId,
-      tipo: tipo
-    };
-    
-    try {
-      await onAddEntrega(novaEntrega);
-      
-      if (tipo === 'excecao' && excecaoId) {
-        await onUpdateExcecao(excecaoId, { entregue: true, dataEntrega: hoje });
-        setTimeout(async () => {
-          await onDeleteExcecao(excecaoId);
-        }, 100);
-      }
-      
-      setModalData({ show: false, clienteId: null, clienteNome: '', rotaId: null, entregaAntecipada: null, excecaoId: null });
-      alert(`Entrega de ${clienteNome} registrada.`);
-    } catch (error) {
-      console.error('Erro ao registrar entrega:', error);
-      alert('Erro ao registrar entrega.');
-    }
   };
   
   const excluirEntrega = async (entregaId) => {
@@ -95,6 +62,12 @@ export default function Rotas({
     return entregas
       .filter(e => e.clienteId === clienteId && new Date(e.data) >= doisMesesAtras)
       .sort((a, b) => new Date(b.data) - new Date(a.data));
+  };
+
+  // Verifica se o cliente possui entrega realizada na data atual
+  const isClienteEntregueHoje = (clienteId) => {
+    const hoje = new Date().toISOString().split('T')[0];
+    return entregas.some(e => e.clienteId === clienteId && e.data === hoje && e.tipo !== 'pulado');
   };
   
   const getEntregaAntecipada = (clienteId, rotaOriginalId) => {
@@ -161,20 +134,6 @@ export default function Rotas({
     return excecoes.filter(exp => exp.rotaDestinoId === rotaDestinoId && !exp.entregue);
   };
   
-  const getClientesOutrasRotas = (rotaAtualId) => {
-    const clientesNestaRota = rotasSalvas.find(r => r.id === rotaAtualId)?.clientes || [];
-    const clientesOutrasRotas = rotasSalvas
-      .filter(r => r.id !== rotaAtualId)
-      .flatMap(r => r.clientes);
-    const unicos = [];
-    clientesOutrasRotas.forEach(c => {
-      if (!unicos.find(u => u.id === c.id) && !clientesNestaRota.find(cc => cc.id === c.id)) {
-        unicos.push(c);
-      }
-    });
-    return unicos;
-  };
-  
   const isClienteEmExcecao = (clienteId, rotaDestinoId) => {
     return excecoes.some(exp => 
       exp.clienteId === clienteId && 
@@ -190,13 +149,36 @@ export default function Rotas({
         : [...prev, cliente]
     );
   };
+
+  // Função para mover a posição do cliente dentro de uma rota já salva
+  const moverOrdemCliente = async (rota, index, direcao) => {
+    const novosClientes = [...rota.clientes];
+    const novoIndex = index + direcao;
+
+    if (novoIndex < 0 || novoIndex >= novosClientes.length) return;
+
+    // Troca de posição
+    const temp = novosClientes[index];
+    novosClientes[index] = novosClientes[novoIndex];
+    novosClientes[novoIndex] = temp;
+
+    try {
+      await onUpdateRota(rota.id, {
+        ...rota,
+        clientes: novosClientes
+      });
+    } catch (error) {
+      console.error('Erro ao reordenar clientes:', error);
+      alert('Erro ao atualizar a ordem dos clientes.');
+    }
+  };
   
   const salvarRota = async () => {
     if (selecionados.length === 0) return alert("Selecione pelo menos um cliente.");
     if (!nomeRota.trim()) return alert("Informe um nome para a rota.");
     if (!dataInicio) return alert("Informe a data de início da rota.");
     
-    const ordenados = [...selecionados].sort((a, b) => a.bairro.localeCompare(b.bairro));
+    const ordenados = [...selecionados].sort((a, b) => (a.bairro || '').localeCompare(b.bairro || ''));
     
     try {
       if (rotaEmEdicao) {
@@ -263,15 +245,16 @@ export default function Rotas({
   };
   
   const gerarLinkGoogleMaps = (clientesDaRota) => {
+    if (!clientesDaRota || clientesDaRota.length === 0) return;
+
     const origem = "Rua Frei Jerônimo de São Brás, 202 - Taubaté";
     
-    // Construir waypoints corretamente (apenas rua, número, bairro e cidade)
     const waypoints = clientesDaRota.slice(0, -1).map(c => 
-      `${c.endereco}, ${c.numero}, ${c.bairro}, ${c.cidade}`
+      `${c.endereco || ''}, ${c.numero || ''}, ${c.bairro || ''}, ${c.cidade || ''}`
     ).join('|');
     
     const destino = clientesDaRota[clientesDaRota.length - 1];
-    const destinoStr = `${destino.endereco}, ${destino.numero}, ${destino.bairro}, ${destino.cidade}`;
+    const destinoStr = `${destino.endereco || ''}, ${destino.numero || ''}, ${destino.bairro || ''}, ${destino.cidade || ''}`;
     
     let url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origem)}&destination=${encodeURIComponent(destinoStr)}&travelmode=driving&dir_action=navigate`;
     
@@ -300,7 +283,7 @@ export default function Rotas({
           <div style={{ padding: '12px', borderBottom: '1px solid #e2d5c0' }}>
             <input
               type="text"
-              placeholder="Buscar por nome fantasia..."
+              placeholder="Buscar"
               value={buscaCliente}
               onChange={(e) => setBuscaCliente(e.target.value)}
               style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2d5c0', fontSize: '0.85rem' }}
@@ -310,12 +293,16 @@ export default function Rotas({
             {clientes
               .filter(c => 
                 c.nomeFantasia?.toLowerCase().includes(buscaCliente.toLowerCase()) ||
-                c.razaoSocial?.toLowerCase().includes(buscaCliente.toLowerCase())
+                c.razaoSocial?.toLowerCase().includes(buscaCliente.toLowerCase()) ||
+                c.bairro?.toLowerCase().includes(buscaCliente.toLowerCase()) ||
+                c.cidade?.toLowerCase().includes(buscaCliente.toLowerCase())
               )
               .map(c => (
               <div key={c.id} style={{ padding: '8px 12px', borderBottom: '1px solid #f0e6d5', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <input type="checkbox" checked={!!selecionados.find(s => s.id === c.id)} onChange={() => toggleCliente(c)} style={{ accentColor: '#f4890f', width: '16px', height: '16px' }} />
-                <span style={{ fontSize: '0.85rem', color: '#351000' }}><strong>{c.razaoSocial}</strong> - {c.nomeFantasia ? `(${c.nomeFantasia})` : ''} - {c.bairro}</span>
+                <span style={{ fontSize: '0.85rem', color: '#351000' }}>
+                  <strong>{c.razaoSocial}</strong> - {c.bairro || 'Sem Bairro'} - {c.cidade || 'Sem Cidade'}
+                </span>
               </div>
             ))}
           </div>
@@ -346,43 +333,12 @@ export default function Rotas({
         </div>
       </div>
       
-      {/* Modal entrega antecipada - estilo mantido */}
-      {modalData.show && (
-        <div style={modalOverlayStyle}>
-          <div style={modalContentStyle}>
-            <h3 style={{ margin: '0 0 12px 0', fontSize: '1.25rem', fontWeight: '600', color: '#351000' }}>
-              Entrega Antecipada Detectada
-            </h3>
-            <p style={{ margin: '0 0 8px 0', color: '#4b342e' }}>
-              O cliente <strong>{modalData.clienteNome}</strong> já foi entregue em{' '}
-              <strong>{modalData.entregaAntecipada?.data}</strong> pela rota{' '}
-              <strong>{rotasSalvas.find(r => r.id === modalData.entregaAntecipada?.rotaId)?.nome || 'desconhecida'}</strong>.
-            </p>
-            <p style={{ margin: '0 0 20px 0', color: '#6b7280', fontSize: '0.875rem' }}>
-              Como deseja proceder nesta rota?
-            </p>
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-              <button onClick={() => registrarEntrega(modalData.clienteId, modalData.clienteNome, modalData.rotaId, 'normal', modalData.excecaoId)} style={{ background: '#10b981', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: '500' }}>
-                Entregar normalmente
-              </button>
-              <button onClick={() => registrarEntrega(modalData.clienteId, modalData.clienteNome, modalData.rotaId, 'pulado', modalData.excecaoId)} style={{ background: '#f59e0b', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: '500' }}>
-                Pular (já entregue)
-              </button>
-              <button onClick={() => setModalData({ show: false, clienteId: null, clienteNome: '', rotaId: null, entregaAntecipada: null, excecaoId: null })} style={{ background: '#6b7280', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: '500' }}>
-                Cancelar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      
       {/* Lista de Rotas Salvas em cards */}
       <h3 style={{ color: '#351000', margin: '40px 0 20px 0', fontSize: '1.4rem' }}>Rotas Salvas</h3>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(600px, 1fr))', gap: '24px', marginBottom: '40px' }}>
         {rotasSalvas.map(rota => {
           const litros = calcularLitros(rota);
           const excecoesAtivas = getExcecoesAtivasPorRota(rota.id);
-          const clientesOutrasRotas = getClientesOutrasRotas(rota.id);
           
           return (
             <div key={rota.id} style={{ background: '#fff', padding: '18px', borderRadius: '20px', border: '1px solid #e2d5c0', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
@@ -404,39 +360,57 @@ export default function Rotas({
                 </div>
               )}
               
-              {/* Clientes fixos com scroll */}
+              {/* Clientes fixos com reordenação e flag de status */}
               <div style={{ marginBottom: '16px' }}>
-                <strong style={{ fontSize: '0.85rem', color: '#6a2402' }}>Clientes fixos:</strong>
-                <div style={{ fontSize: '0.8rem', maxHeight: '120px', overflowY: 'auto', marginTop: '6px', borderTop: '1px solid #f0e6d5', paddingTop: '6px' }}>
-                  {rota.clientes.map(c => {
+                <strong style={{ fontSize: '0.85rem', color: '#6a2402' }}>Clientes fixos (ordem da rota):</strong>
+                <div style={{ fontSize: '0.8rem', maxHeight: '180px', overflowY: 'auto', marginTop: '6px', borderTop: '1px solid #f0e6d5', paddingTop: '6px' }}>
+                  {rota.clientes.map((c, index) => {
+                    const entregueHoje = isClienteEntregueHoje(c.id);
                     const entregaAntecipada = getEntregaAntecipada(c.id, rota.id);
-                    const handleEntregaClick = () => {
-                      if (entregaAntecipada) {
-                        setModalData({
-                          show: true,
-                          clienteId: c.id,
-                          clienteNome: c.razaoSocial,
-                          rotaId: rota.id,
-                          entregaAntecipada: entregaAntecipada,
-                          excecaoId: null
-                        });
-                      } else {
-                        registrarEntrega(c.id, c.razaoSocial, rota.id, 'normal');
-                      }
-                    };
+                    
                     return (
                       <div key={c.id} style={{ borderBottom: '1px solid #f0e6d5', padding: '6px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span>
-                          {c.razaoSocial} - {c.bairro}
-                          {entregaAntecipada && (
-                            <span style={{ color: '#f59e0b', marginLeft: '8px', fontSize: '0.7rem' }}>
-                              ⚠️ Entregue antecipadamente em {entregaAntecipada.data}
-                            </span>
-                          )}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          {/* Botões de subida / descida de ordem */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <button
+                              disabled={index === 0}
+                              onClick={() => moverOrdemCliente(rota, index, -1)}
+                              style={{ border: 'none', background: '#f0e6d5', cursor: index === 0 ? 'default' : 'pointer', opacity: index === 0 ? 0.3 : 1, borderRadius: '3px', fontSize: '0.6rem', padding: '0 4px' }}
+                            >
+                              ⬆
+                            </button>
+                            <button
+                              disabled={index === rota.clientes.length - 1}
+                              onClick={() => moverOrdemCliente(rota, index, 1)}
+                              style={{ border: 'none', background: '#f0e6d5', cursor: index === rota.clientes.length - 1 ? 'default' : 'pointer', opacity: index === rota.clientes.length - 1 ? 0.3 : 1, borderRadius: '3px', fontSize: '0.6rem', padding: '0 4px' }}
+                            >
+                              ⬇
+                            </button>
+                          </div>
+
+                          <span>
+                            <strong>{index + 1}.</strong> {c.razaoSocial} - {c.bairro || 'Sem Bairro'} - {c.cidade || 'Sem Cidade'}
+                            {entregaAntecipada && (
+                              <span style={{ color: '#f59e0b', marginLeft: '8px', fontSize: '0.7rem' }}>
+                                ⚠️ Entregue em {entregaAntecipada.data}
+                              </span>
+                            )}
+                          </span>
+                        </div>
+
+                        {/* Flag visual de status */}
+                        <span style={{
+                          padding: '3px 8px',
+                          borderRadius: '12px',
+                          fontSize: '0.7rem',
+                          fontWeight: 'bold',
+                          backgroundColor: entregueHoje ? '#d1fae5' : '#fef3c7',
+                          color: entregueHoje ? '#065f46' : '#92400e',
+                          border: `1px solid ${entregueHoje ? '#a7f3d0' : '#fde68a'}`
+                        }}>
+                          {entregueHoje ? '✓ Entregue' : '⏳ Pendente'}
                         </span>
-                        <button onClick={handleEntregaClick} style={{ background: '#f4890f', color: '#fff', border: 'none', padding: '3px 10px', borderRadius: '20px', fontSize: '0.7rem', cursor: 'pointer' }}>
-                          {entregaAntecipada ? '✓ Registrar/Pular' : '✓ Entregue'}
-                        </button>
                       </div>
                     );
                   })}
@@ -455,12 +429,9 @@ export default function Rotas({
                         <div key={exp.id} style={{ borderBottom: '1px solid #fde68a', padding: '4px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <span>
                             {cliente?.razaoSocial || exp.clienteId} 
-                            <span style={{ fontSize: '0.65rem', color: '#8e6b49' }}> (rota orig: {rotaOrigem?.nome || '?'})</span>
+                            <span style={{ fontSize: '0.65rem', color: '#8e6b49' }}> (origem: {rotaOrigem?.nome || '?'})</span>
                           </span>
-                          <div>
-                            <button onClick={() => registrarEntrega(cliente.id, cliente.razaoSocial, rota.id, 'excecao', exp.id)} style={{ background: '#10b981', color: '#fff', border: 'none', padding: '2px 10px', borderRadius: '12px', fontSize: '0.65rem', cursor: 'pointer', marginRight: '5px' }}>Registrar</button>
-                            <button onClick={() => removerEncaixe(exp.id)} style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '2px 8px', borderRadius: '12px', fontSize: '0.65rem', cursor: 'pointer' }}>Cancelar</button>
-                          </div>
+                          <button onClick={() => removerEncaixe(exp.id)} style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '2px 8px', borderRadius: '12px', fontSize: '0.65rem', cursor: 'pointer' }}>Cancelar</button>
                         </div>
                       );
                     })}
@@ -474,7 +445,7 @@ export default function Rotas({
                 <div style={{ position: 'relative', marginTop: '8px' }}>
                   <input
                     type="text"
-                    placeholder="Buscar cliente..."
+                    placeholder="Buscar"
                     value={buscaEncaixe}
                     onChange={(e) => {
                       setBuscaEncaixe(e.target.value);
@@ -525,19 +496,10 @@ export default function Rotas({
                                 backgroundColor: jaEmEncaixe ? '#f9f9f9' : '#fff'
                               }}
                             >
-                              {c.razaoSocial} {c.nomeFantasia ? `(${c.nomeFantasia})` : ''} {rotaOrigem ? `(rota: ${rotaOrigem.nome})` : '(sem rota)'} {jaEmEncaixe ? ' - já encaixe ativo' : ''}
+                              {c.razaoSocial} - {c.bairro || ''} - {c.cidade || ''} {jaEmEncaixe ? ' - já em encaixe' : ''}
                             </div>
                           );
                         })}
-                      {clientes.filter(c => 
-                        (c.nomeFantasia?.toLowerCase().includes(buscaEncaixe.toLowerCase()) ||
-                        c.razaoSocial?.toLowerCase().includes(buscaEncaixe.toLowerCase())) &&
-                        !rota.clientes.some(rc => rc.id === c.id)
-                      ).length === 0 && (
-                        <div style={{ padding: '8px 12px', fontSize: '0.7rem', color: '#aaa' }}>
-                          Nenhum cliente encontrado
-                        </div>
-                      )}
                     </div>
                   )}
                 </div>
@@ -653,26 +615,4 @@ const inputStyle = {
   border: '1px solid #e2d5c0',
   fontSize: '0.85rem',
   backgroundColor: '#fff'
-};
-
-const modalOverlayStyle = {
-  position: 'fixed',
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-  background: 'rgba(0,0,0,0.5)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  zIndex: 1000
-};
-
-const modalContentStyle = {
-  background: '#fff',
-  borderRadius: '24px',
-  padding: '24px',
-  width: '90%',
-  maxWidth: '450px',
-  boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)'
 };

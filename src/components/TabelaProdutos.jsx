@@ -48,9 +48,8 @@ export default function TabelaProdutos({
 
   const handleUpdate = async (id, field, value) => {
     const novoValor = parseFloat(value) || 0;
-    // Salva o valor antigo para possível reversão
     const produtoAntigo = produtosFinais.find(p => p.id === id);
-    const valorAntigo = produtoAntigo[field];
+    const valorAntigo = produtoAntigo ? produtoAntigo[field] : 0;
 
     // 1. Atualização otimista no estado local
     setProdutosFinais(prev =>
@@ -63,7 +62,6 @@ export default function TabelaProdutos({
     } catch (error) {
       console.error('Erro ao salvar produto:', error);
       alert('Erro ao salvar alteração. Revertendo...');
-      // Reverte o estado local
       setProdutosFinais(prev =>
         prev.map(p => (p.id === id ? { ...p, [field]: valorAntigo } : p))
       );
@@ -133,16 +131,15 @@ export default function TabelaProdutos({
             <th style={{ padding: '14px' }}>Massa</th>
             <th style={{ padding: '14px' }}>Emb.</th>
             <th style={{ padding: '14px' }}>Rótulo</th>
-            <th style={{ padding: '14px', backgroundColor: '#f1f5f9' }}>Custo Bruto</th>
-            <th style={{ padding: '14px' }}>Imposto (%)</th>
             <th style={{ padding: '14px' }}>Preço Base</th>
+            <th style={{ padding: '14px' }}>Imposto (%)</th>
+            <th style={{ padding: '14px', backgroundColor: '#f1f5f9' }}>Custo Bruto</th>
             <th style={{ padding: '14px' }}>Lucro Real</th>
             <th style={{ padding: '14px', width: '50px' }}></th>
           </tr>
         </thead>
         <tbody>
           {produtosFinais.map(prod => {
-            // Cálculos (mantidos iguais ao original)
             const custoKgMassa = calcularPrecoKgMassa(prod.receitaId, materiais, receitas);
             const custoMateriaPrima = (prod.pesoG / 1000) * custoKgMassa;
             
@@ -167,10 +164,18 @@ export default function TabelaProdutos({
             const precisaLacre = prod.id === 'p3' || prod.id === 'p5' || prod.embId?.includes('pote');
             const vLacre = precisaLacre && lacreItem ? obterCustoUnitarioItem(lacreItem) : 0;
 
-            const custoBruto = custoMateriaPrima + vEmb + vRot + vLacre;
+            // 1. Custo dos Insumos
+            const custoInsumos = custoMateriaPrima + vEmb + vRot + vLacre;
+            
+            // 2. Cálculo do Imposto sobre o Preço Base (Venda)
             const aliquota = prod.imposto || 7.3;
-            const valorImposto = prod.venda * (aliquota / 100);
-            const lucroBrutoReal = prod.venda - custoBruto - valorImposto;
+            const valorImposto = (prod.venda || 0) * (aliquota / 100);
+
+            // 3. Custo Bruto com o Imposto adicionado
+            const custoBrutoTotal = custoInsumos + valorImposto;
+
+            // 4. Lucro Real (Preço Base - Custo Bruto Total)
+            const lucroBrutoReal = (prod.venda || 0) - custoBrutoTotal;
 
             return (
               <tr key={prod.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
@@ -179,18 +184,8 @@ export default function TabelaProdutos({
                 <td style={{ padding: '14px', color: '#64748b' }}>R$ {custoMateriaPrima.toFixed(2)}</td>
                 <td style={{ padding: '14px', color: '#64748b' }}>R$ {vEmb.toFixed(2)}</td>
                 <td style={{ padding: '14px', color: '#64748b' }}>R$ {vRot.toFixed(2)}</td>
-                <td style={{ padding: '14px', fontWeight: 'bold', backgroundColor: '#f8fafc' }}>R$ {custoBruto.toFixed(2)}</td>
                 
-                <td style={{ padding: '8px' }}>
-                  <input 
-                    type="number" 
-                    step="0.1" 
-                    value={aliquota} 
-                    onChange={(e) => handleUpdate(prod.id, 'imposto', e.target.value)} 
-                    style={{ width: '50px', padding: '4px' }} 
-                  />%
-                </td>
-                
+                {/* Preço Base */}
                 <td style={{ padding: '8px' }}>
                   <input 
                     type="number" 
@@ -200,10 +195,33 @@ export default function TabelaProdutos({
                     style={{ width: '70px', padding: '6px' }} 
                   />
                 </td>
-                
+
+                {/* Imposto % e Valor Calculado em R$ */}
+                <td style={{ padding: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <input 
+                      type="number" 
+                      step="0.1" 
+                      value={aliquota} 
+                      onChange={(e) => handleUpdate(prod.id, 'imposto', e.target.value)} 
+                      style={{ width: '50px', padding: '4px' }} 
+                    />%
+                  </div>
+                  <div style={{ fontSize: '0.75em', color: '#64748b', marginTop: '2px' }}>
+                    R$ {valorImposto.toFixed(2)}
+                  </div>
+                </td>
+
+                {/* Custo Bruto (Insumos + Imposto) */}
+                <td style={{ padding: '14px', fontWeight: 'bold', backgroundColor: '#f8fafc' }}>
+                  R$ {custoBrutoTotal.toFixed(2)}
+                </td>
+
+                {/* Lucro Real */}
                 <td style={{ padding: '14px', fontWeight: 'bold', color: lucroBrutoReal > 0 ? '#28a745' : '#dc3545' }}>
                   R$ {lucroBrutoReal.toFixed(2)}
                 </td>
+
                 <td style={{ padding: '8px', textAlign: 'center' }}>
                   <button
                     onClick={() => handleDeleteProduto(prod.id)}

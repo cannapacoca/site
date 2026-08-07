@@ -1,6 +1,6 @@
 // src/components/FormularioVendas.jsx
-import React, { useState, useEffect } from 'react';
-import { Trash2, ShoppingCart, Check, User, Eye, X, Edit2 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Trash2, ShoppingCart, Check, User, Eye, X, Edit2, Search } from 'lucide-react';
 
 export default function FormularioVendas({
   produtosFinais,
@@ -14,10 +14,15 @@ export default function FormularioVendas({
   const [produtosSelecionados, setProdutosSelecionados] = useState({});
   const [novaVenda, setNovaVenda] = useState({
     clienteId: "",
-    emiteNota: "",
+    emiteNota: false,
     formaPagamento: "",
     dataRecebimento: "",
   });
+
+  // Estados para a busca e filtro de clientes
+  const [buscaClienteText, setBuscaClienteText] = useState("");
+  const [mostrarDropdownCliente, setMostrarDropdownCliente] = useState(false);
+  const clienteDropdownRef = useRef(null);
 
   const [filtroCliente, setFiltroCliente] = useState("");
   const [filtroData, setFiltroData] = useState("");
@@ -38,23 +43,45 @@ export default function FormularioVendas({
     setProdutosSelecionados(inicial);
   }, [produtosFinais]);
 
+  // Fechar dropdown ao clicar fora
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (clienteDropdownRef.current && !clienteDropdownRef.current.contains(event.target)) {
+        setMostrarDropdownCliente(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
-  const handleClienteChange = (id) => {
-    const clienteIdFormatado = id ? Number(id) : "";
-    const clienteSelecionado = clientes.find(c => c.id === clienteIdFormatado);
-    if (clienteSelecionado) {
-      let condicaoPadrao = "boleto";
-      if (clienteSelecionado.aVista) condicaoPadrao = "a_vista";
-      else if (clienteSelecionado.emissaoBolet) condicaoPadrao = "boleto";
-      setNovaVenda(prev => ({
-        ...prev,
-        clienteId: clienteIdFormatado,
-        emiteNota: clienteSelecionado.emiteNota,
-        formaPagamento: condicaoPadrao
-      }));
-    } else {
-      setNovaVenda(prev => ({ ...prev, clienteId: clienteIdFormatado }));
-    }
+  const clientesFiltradosBusca = clientes.filter(c => {
+    if (!buscaClienteText.trim()) return true;
+    const termo = buscaClienteText.toLowerCase();
+    const termoLimpo = termo.replace(/\D/g, '');
+    
+    const razao = (c.razaoSocial || '').toLowerCase();
+    const fantasia = (c.nomeFantasia || '').toLowerCase();
+    const cnpj = (c.cnpj || '').replace(/\D/g, '');
+
+    return razao.includes(termo) || 
+           fantasia.includes(termo) || 
+           (termoLimpo && cnpj.includes(termoLimpo));
+  });
+
+  const handleSelecionarCliente = (cliente) => {
+    let condicaoPadrao = "boleto";
+    if (cliente.aVista) condicaoPadrao = "a_vista";
+    else if (cliente.emissaoBolet) condicaoPadrao = "boleto";
+
+    setNovaVenda(prev => ({
+      ...prev,
+      clienteId: cliente.id,
+      emiteNota: Boolean(cliente.emiteNota),
+      formaPagamento: condicaoPadrao
+    }));
+
+    setBuscaClienteText(cliente.nomeFantasia || cliente.razaoSocial);
+    setMostrarDropdownCliente(false);
   };
 
   const handleCheckboxChange = (produtoId, checked) => {
@@ -129,7 +156,7 @@ export default function FormularioVendas({
       mostrarToast("Por favor, selecione um cliente para a venda.", 'error');
       return;
     }
-    if (!novaVenda.emiteNota) {
+    if (typeof novaVenda.emiteNota !== 'boolean') {
       mostrarToast("Por favor, selecione o tipo de documento fiscal.", 'error');
       return;
     }
@@ -158,7 +185,7 @@ export default function FormularioVendas({
     const novoLancamento = {
       id: `v_${Date.now()}`,
       clienteId: novaVenda.clienteId,
-      nomeCliente: clienteSelecionado?.razaoSocial,
+      nomeCliente: clienteSelecionado?.nomeFantasia || clienteSelecionado?.razaoSocial,
       emiteNota: novaVenda.emiteNota,
       formaPagamento: novaVenda.formaPagamento,
       dataRecebimento: novaVenda.dataRecebimento,
@@ -178,10 +205,11 @@ export default function FormularioVendas({
       setCarrinho([]);
       setNovaVenda({
         clienteId: "",
-        emiteNota: true,
-        formaPagamento: "boleto",
+        emiteNota: false,
+        formaPagamento: "",
         dataRecebimento: "",
       });
+      setBuscaClienteText("");
       mostrarToast("Venda registrada com sucesso!", 'success');
     } catch (error) {
       console.error('Erro ao salvar venda:', error);
@@ -231,7 +259,7 @@ export default function FormularioVendas({
     
     const vendaAtualizada = {
       ...vendaEmEdicao,
-      nomeCliente: clienteSelecionado?.razaoSocial,
+      nomeCliente: clienteSelecionado?.nomeFantasia || clienteSelecionado?.razaoSocial,
       totalVenda,
       custoTotalLote,
       lucroBrutoTotal: totalVenda - custoTotalLote - totalImposto
@@ -257,27 +285,84 @@ export default function FormularioVendas({
         <form onSubmit={handleSalvarVenda}>
           {/* Dados do cliente */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
-            <div style={{ flex: '1 1 280px' }}>
+            {/* Campo com busca digitável para Cliente */}
+            <div style={{ flex: '1 1 280px', position: 'relative' }} ref={clienteDropdownRef}>
               <label style={labelStyle}>Cliente</label>
-              <select
-                value={novaVenda.clienteId}
-                onChange={(e) => handleClienteChange(e.target.value)}
-                style={{ ...inputStyle, fontWeight: '500', backgroundColor: '#fef9f0' }}
-              >
-                <option value="">-- Selecione um Cliente --</option>
-                {clientes.map(c => <option key={c.id} value={c.id}>{c.razaoSocial}</option>)}
-              </select>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="text"
+                  placeholder="Digite Nome Fantasia, Razão Social ou CNPJ..."
+                  value={buscaClienteText}
+                  onChange={(e) => {
+                    setBuscaClienteText(e.target.value);
+                    setMostrarDropdownCliente(true);
+                    if (!e.target.value) {
+                      setNovaVenda(prev => ({ ...prev, clienteId: "" }));
+                    }
+                  }}
+                  onFocus={() => setMostrarDropdownCliente(true)}
+                  style={{ ...inputStyle, fontWeight: '500', backgroundColor: '#fef9f0', paddingRight: '30px' }}
+                />
+                <Search size={16} color="#8e6b49" style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+              </div>
+
+              {mostrarDropdownCliente && (
+                <ul style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  right: 0,
+                  maxHeight: '220px',
+                  overflowY: 'auto',
+                  backgroundColor: '#fff',
+                  border: '1px solid #e2d5c0',
+                  borderRadius: '8px',
+                  zIndex: 100,
+                  listStyle: 'none',
+                  margin: '4px 0 0 0',
+                  padding: 0,
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                }}>
+                  {clientesFiltradosBusca.length > 0 ? (
+                    clientesFiltradosBusca.map(c => (
+                      <li
+                        key={c.id}
+                        onClick={() => handleSelecionarCliente(c)}
+                        style={{
+                          padding: '10px 12px',
+                          cursor: 'pointer',
+                          borderBottom: '1px solid #f5efe5',
+                          fontSize: '0.85rem'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#fef9f0'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#fff'}
+                      >
+                        <div style={{ fontWeight: 'bold', color: '#351000' }}>
+                          {c.nomeFantasia || c.razaoSocial}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: '#8e6b49' }}>
+                          {c.razaoSocial ? `Razão: ${c.razaoSocial} | ` : ''}CNPJ: {c.cnpj || 'N/I'}
+                        </div>
+                      </li>
+                    ))
+                  ) : (
+                    <li style={{ padding: '10px', fontSize: '0.85rem', color: '#8e6b49', textAlign: 'center' }}>
+                      Nenhum cliente encontrado
+                    </li>
+                  )}
+                </ul>
+              )}
             </div>
+
             <div style={{ width: '140px' }}>
               <label style={labelStyle}>Documento Fiscal</label>
               <select
-                value={novaVenda.emiteNota === true ? "com_nota" : (novaVenda.emiteNota === false ? "sem_nota" : "")}
+                value={novaVenda.emiteNota ? "com_nota" : "sem_nota"}
                 onChange={(e) => setNovaVenda(prev => ({ ...prev, emiteNota: e.target.value === "com_nota" }))}
                 style={inputStyle}
               >
-                <option value="">-- Selecione --</option>
-                <option value="com_nota">Com Nota</option>
                 <option value="sem_nota">Sem Nota</option>
+                <option value="com_nota">Com Nota</option>
               </select>
             </div>
             <div style={{ width: '150px' }}>
@@ -306,7 +391,7 @@ export default function FormularioVendas({
             )}
           </div>
 
-          {/* Lista de produtos - cada produto em linha */}
+          {/* Lista de produtos - visível e sem scroll */}
           <div style={{ marginBottom: '24px' }}>
             <label style={labelStyle}>Selecione os produtos:</label>
             <div style={{
@@ -316,8 +401,6 @@ export default function FormularioVendas({
               border: '1px solid #e2d5c0',
               borderRadius: '12px',
               padding: '16px',
-              maxHeight: '300px',
-              overflowY: 'auto',
               background: '#fefcf8',
               maxWidth: '600px',
             }}>
@@ -397,7 +480,7 @@ export default function FormularioVendas({
             style={{ ...inputStyle, width: '240px' }}
           >
             <option value="">Todos os Clientes</option>
-            {clientes.map(c => <option key={c.id} value={c.id}>{c.razaoSocial}</option>)}
+            {clientes.map(c => <option key={c.id} value={c.id}>{c.nomeFantasia || c.razaoSocial}</option>)}
           </select>
         </div>
         <h4 style={{ margin: '0 0 12px 0', color: '#351000', fontSize: '1.2rem' }}>Histórico de Vendas</h4>
@@ -498,7 +581,7 @@ export default function FormularioVendas({
                     onChange={(e) => setVendaEmEdicao(prev => ({ ...prev, clienteId: Number(e.target.value) }))}
                     style={{ ...inputStyle, fontWeight: '500', backgroundColor: '#fef9f0' }}
                   >
-                    {clientes.map(c => <option key={c.id} value={c.id}>{c.razaoSocial}</option>)}
+                    {clientes.map(c => <option key={c.id} value={c.id}>{c.nomeFantasia || c.razaoSocial}</option>)}
                   </select>
                 </div>
                 <div style={{ width: '140px' }}>
@@ -610,7 +693,7 @@ export default function FormularioVendas({
   );
 }
 
-// Estilos centralizados (agora com cores da paleta)
+// Estilos centralizados
 const inputStyle = {
   width: '100%',
   padding: '8px 12px',
