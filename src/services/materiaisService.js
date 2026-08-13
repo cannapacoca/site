@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 const toSnakeCase = (mat) => ({
   id: mat.id,
   nome: mat.nome,
+  tipo: mat.tipo, // <-- ADICIONADO AQUI
   unidade: mat.unidade,
   peso_compra: mat.pesoCompra,
   unidades_pacote: mat.unidadesPacote,
@@ -12,6 +13,7 @@ const toSnakeCase = (mat) => ({
 const toCamelCase = (dbMat) => ({
   id: dbMat.id,
   nome: dbMat.nome,
+  tipo: dbMat.tipo || 'materia_prima', // <-- ADICIONADO AQUI (com fallback para registros antigos)
   unidade: dbMat.unidade,
   pesoCompra: dbMat.peso_compra,
   unidadesPacote: dbMat.unidades_pacote,

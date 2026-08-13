@@ -1,9 +1,8 @@
 // src/components/TabelaMateriais.jsx
 import React, { useState } from 'react';
 import { obterCustoUnitarioItem } from '../utils/pricingUtils';
-import { Trash2, Plus } from 'lucide-react';
+import { Trash2, Plus, Filter } from 'lucide-react';
 
-// Estilo padrão para inputs (caso não venha por prop)
 const defaultInputStyle = {
   width: '100%',
   padding: '6px 8px',
@@ -21,8 +20,18 @@ export default function TabelaMateriais({
   onDeleteMaterial,
   inputStyle = defaultInputStyle 
 }) {
-  const [novoMaterial, setNovoMaterial] = useState({ nome: '', unidade: 'Kg', precoCompra: '', pesoCompra: '', unidadesPacote: '' });
+  const [filtroTipo, setFiltroTipo] = useState('todos'); // 'todos', 'materia_prima', 'embalagem', 'rotulo'
   const [showForm, setShowForm] = useState(false);
+  
+  const [novoMaterial, setNovoMaterial] = useState({ 
+    nome: '', 
+    tipo: 'materia_prima', 
+    unidade: 'Kg', 
+    precoCompra: '', 
+    pesoCompra: '', 
+    unidadesPacote: '' 
+  });
+
   const handleAddMaterial = async () => {
     if (!novoMaterial.nome || !novoMaterial.precoCompra) {
       alert('Preencha pelo menos o nome e o preço da nota.');
@@ -36,7 +45,7 @@ export default function TabelaMateriais({
         pesoCompra: parseFloat(novoMaterial.pesoCompra) || 0,
         unidadesPacote: parseFloat(novoMaterial.unidadesPacote) || 0
       });
-      setNovoMaterial({ nome: '', unidade: 'Kg', precoCompra: '', pesoCompra: '', unidadesPacote: '' });
+      setNovoMaterial({ nome: '', tipo: 'materia_prima', unidade: 'Kg', precoCompra: '', pesoCompra: '', unidadesPacote: '' });
       setShowForm(false);
     } catch (error) {
       console.error('Erro ao adicionar material:', error);
@@ -55,32 +64,59 @@ export default function TabelaMateriais({
   };
 
   const handleMaterialChange = async (id, campo, valor) => {
-    // Valor pode ser string (nome) ou número
-    const novoValor = campo === 'nome' ? valor : (parseFloat(valor) || (valor === '' ? '' : valor));
+    const novoValor = campo === 'nome' || campo === 'tipo' || campo === 'unidade' ? valor : (parseFloat(valor) || (valor === '' ? '' : valor));
     
-    // Atualização otimista no estado local
     setMateriais(prev => prev.map(mat => 
       mat.id === id ? { ...mat, [campo]: novoValor } : mat
     ));
 
-    // Persiste no banco de dados
     try {
-      // Prepara o objeto de atualização (apenas o campo modificado)
       const updateData = { [campo]: novoValor };
       await onUpdateMaterial(id, updateData);
     } catch (error) {
       console.error('Erro ao atualizar material:', error);
       alert('Erro ao salvar alteração. Desfazendo...');
-      // Reverte o estado local em caso de erro
       setMateriais(prev => prev.map(mat => 
         mat.id === id ? { ...mat, [campo]: materiais.find(m => m.id === id)?.[campo] } : mat
       ));
     }
   };
 
+  const materiaisFiltrados = materiais.filter(mat => {
+    if (filtroTipo === 'todos') return true;
+    return (mat.tipo || 'materia_prima') === filtroTipo;
+  });
+
   return (
     <div style={{ overflowX: 'auto' }}>
-      <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'flex-end' }}>
+      {/* Abas de Filtro por Categoria e Botão Adicionar */}
+      <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          {[
+            { id: 'todos', label: 'Todos' },
+            { id: 'materia_prima', label: 'Matéria-Prima' },
+            { id: 'embalagem', label: 'Embalagens' },
+            { id: 'rotulo', label: 'Rótulos' }
+          ].map(aba => (
+            <button
+              key={aba.id}
+              onClick={() => setFiltroTipo(aba.id)}
+              style={{
+                padding: '8px 16px',
+                borderRadius: '8px',
+                border: '1px solid #e2d5c0',
+                backgroundColor: filtroTipo === aba.id ? '#f4890f' : '#fff',
+                color: filtroTipo === aba.id ? '#fff' : '#6a2402',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                fontSize: '0.9rem'
+              }}
+            >
+              {aba.label}
+            </button>
+          ))}
+        </div>
+
         <button
           onClick={() => setShowForm(!showForm)}
           style={{
@@ -100,15 +136,23 @@ export default function TabelaMateriais({
             <input type="text" value={novoMaterial.nome} onChange={e => setNovoMaterial({ ...novoMaterial, nome: e.target.value })} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', width: '160px' }} />
           </div>
           <div>
+            <label style={{ display: 'block', fontSize: '0.85em', marginBottom: '4px', color: '#64748b' }}>Categoria</label>
+            <select value={novoMaterial.tipo} onChange={e => setNovoMaterial({ ...novoMaterial, tipo: e.target.value })} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', width: '130px' }}>
+              <option value="materia_prima">Matéria-Prima</option>
+              <option value="embalagem">Embalagem</option>
+              <option value="rotulo">Rótulo</option>
+            </select>
+          </div>
+          <div>
             <label style={{ display: 'block', fontSize: '0.85em', marginBottom: '4px', color: '#64748b' }}>Unidade</label>
-            <select value={novoMaterial.unidade} onChange={e => setNovoMaterial({ ...novoMaterial, unidade: e.target.value })} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', width: '100px' }}>
+            <select value={novoMaterial.unidade} onChange={e => setNovoMaterial({ ...novoMaterial, unidade: e.target.value })} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', width: '90px' }}>
               <option value="Kg">Kg</option>
               <option value="Un">Un</option>
             </select>
           </div>
           <div>
             <label style={{ display: 'block', fontSize: '0.85em', marginBottom: '4px', color: '#64748b' }}>Fator (Kg ou Un)</label>
-            <input type="number" step="0.01" value={novoMaterial.pesoCompra} onChange={e => setNovoMaterial({ ...novoMaterial, pesoCompra: e.target.value, unidadesPacote: '' })} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', width: '80px' }} />
+            <input type="number" step="0.01" value={novoMaterial.pesoCompra} onChange={e => setNovoMaterial({ ...novoMaterial, pesoCompra: e.target.value, unidadesPacote: '' })} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', width: '90px' }} />
           </div>
           <div>
             <label style={{ display: 'block', fontSize: '0.85em', marginBottom: '4px', color: '#64748b' }}>Preço Nota (R$)</label>
@@ -127,6 +171,7 @@ export default function TabelaMateriais({
         <thead>
           <tr style={{ backgroundColor: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
             <th style={{ padding: '14px' }}>Insumo</th>
+            <th style={{ padding: '14px' }}>Categoria</th>
             <th style={{ padding: '14px' }}>Unidade</th>
             <th style={{ padding: '14px' }}>Fator (Kg ou Un)</th>
             <th style={{ padding: '14px' }}>Preço Nota (R$)</th>
@@ -135,7 +180,7 @@ export default function TabelaMateriais({
            </tr>
         </thead>
         <tbody>
-          {materiais.map(mat => (
+          {materiaisFiltrados.map(mat => (
             <tr key={mat.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
               <td style={{ padding: '8px' }}>
                 <input 
@@ -144,6 +189,17 @@ export default function TabelaMateriais({
                   onChange={(e) => handleMaterialChange(mat.id, 'nome', e.target.value)} 
                   style={inputStyle} 
                 />
+              </td>
+              <td style={{ padding: '8px' }}>
+                <select
+                  value={mat.tipo || 'materia_prima'}
+                  onChange={(e) => handleMaterialChange(mat.id, 'tipo', e.target.value)}
+                  style={inputStyle}
+                >
+                  <option value="materia_prima">Matéria-Prima</option>
+                  <option value="embalagem">Embalagem</option>
+                  <option value="rotulo">Rótulo</option>
+                </select>
               </td>
               <td style={{ padding: '8px' }}>{mat.unidade}</td>
               <td style={{ padding: '8px' }}>
@@ -182,6 +238,13 @@ export default function TabelaMateriais({
               </td>
             </tr>
           ))}
+          {materiaisFiltrados.length === 0 && (
+            <tr>
+              <td colSpan="7" style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}>
+                Nenhum insumo encontrado nesta categoria.
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
     </div>

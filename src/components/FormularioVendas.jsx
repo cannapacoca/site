@@ -1,6 +1,6 @@
 // src/components/FormularioVendas.jsx
 import React, { useState, useEffect, useRef } from 'react';
-import { Trash2, ShoppingCart, Check, User, Eye, X, Edit2, Search } from 'lucide-react';
+import { Trash2, ShoppingCart, Check, User, Eye, X, Edit2, Search, AlertCircle } from 'lucide-react';
 
 export default function FormularioVendas({
   produtosFinais,
@@ -19,21 +19,22 @@ export default function FormularioVendas({
     dataRecebimento: "",
   });
 
-  // Estados para a busca e filtro de clientes
   const [buscaClienteText, setBuscaClienteText] = useState("");
   const [mostrarDropdownCliente, setMostrarDropdownCliente] = useState(false);
+  const [clienteSelecionadoObj, setClienteSelecionadoObj] = useState(null);
   const clienteDropdownRef = useRef(null);
 
   const [filtroCliente, setFiltroCliente] = useState("");
-  const [filtroData, setFiltroData] = useState("");
+  const [filtroData, setFiltroData] = useState(new Date().toISOString().slice(0, 7));
   const [vendaSelecionada, setVendaSelecionada] = useState(null);
   const [vendaEmEdicao, setVendaEmEdicao] = useState(null);
   const [toast, setToast] = useState(null);
 
-  const vendasFiltradas = vendasLancadas.filter(v =>
-    (filtroCliente === "" || v.clienteId === Number(filtroCliente)) &&
-    (filtroData === "" || v.data === filtroData)
-  );
+  const vendasFiltradas = vendasLancadas.filter(v => {
+    const mesVenda = v.data ? v.data.slice(0, 7) : "";
+    return (filtroCliente === "" || v.clienteId === Number(filtroCliente)) &&
+           (filtroData === "" || mesVenda === filtroData);
+  });
 
   useEffect(() => {
     const inicial = {};
@@ -43,7 +44,6 @@ export default function FormularioVendas({
     setProdutosSelecionados(inicial);
   }, [produtosFinais]);
 
-  // Fechar dropdown ao clicar fora
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (clienteDropdownRef.current && !clienteDropdownRef.current.contains(event.target)) {
@@ -80,15 +80,21 @@ export default function FormularioVendas({
       formaPagamento: condicaoPadrao
     }));
 
+    setClienteSelecionadoObj(cliente);
     setBuscaClienteText(cliente.nomeFantasia || cliente.razaoSocial);
     setMostrarDropdownCliente(false);
-  };
 
-  const handleCheckboxChange = (produtoId, checked) => {
-    setProdutosSelecionados(prev => ({
-      ...prev,
-      [produtoId]: { ...prev[produtoId], checked }
-    }));
+    if (carrinho.length > 0) {
+      setCarrinho(prev => prev.map(item => {
+        const prodRef = produtosFinais.find(p => p.id === item.id);
+        const aliquotaPadrao = prodRef?.imposto ?? 7.3;
+        const novaAliquota = cliente.emiteNota ? aliquotaPadrao : 0;
+        return {
+          ...item,
+          aliquotaImposto: novaAliquota
+        };
+      }));
+    }
   };
 
   const handleQuantidadeChange = (produtoId, quantidade) => {
@@ -119,11 +125,15 @@ export default function FormularioVendas({
             mostrarToast(`Preço inválido para ${produto.nome}`, 'error');
             return;
           }
+          const custoUnitario = obterCustoUnidadeProduto(produto);
+          const aliquotaInicial = novaVenda.emiteNota ? (produto.imposto ?? 7.3) : 0;
+
           produtosParaAdicionar.push({
             ...produto,
             qtd: qtd,
             preco: precoFinal,
-            precoCustomizadoUsado: !!config.precoCustomizado
+            custoUnitario: custoUnitario,
+            aliquotaImposto: aliquotaInicial
           });
         }
       }
@@ -141,6 +151,15 @@ export default function FormularioVendas({
     mostrarToast(`${produtosParaAdicionar.length} produto(s) adicionado(s) ao carrinho.`, 'success');
   };
 
+  const atualizarItemCarrinho = (index, campo, valor) => {
+    setCarrinho(prev => prev.map((item, i) => {
+      if (i === index) {
+        return { ...item, [campo]: valor === '' ? 0 : parseFloat(valor) };
+      }
+      return item;
+    }));
+  };
+
   const removerItemCarrinho = (index) => {
     setCarrinho(prev => prev.filter((_, i) => i !== index));
   };
@@ -156,10 +175,6 @@ export default function FormularioVendas({
       mostrarToast("Por favor, selecione um cliente para a venda.", 'error');
       return;
     }
-    if (typeof novaVenda.emiteNota !== 'boolean') {
-      mostrarToast("Por favor, selecione o tipo de documento fiscal.", 'error');
-      return;
-    }
     if (!novaVenda.formaPagamento) {
       mostrarToast("Por favor, selecione a condição de pagamento.", 'error');
       return;
@@ -170,17 +185,12 @@ export default function FormularioVendas({
     }
     const clienteSelecionado = clientes.find(c => c.id === novaVenda.clienteId);
     const totalVenda = carrinho.reduce((acc, item) => acc + (item.qtd * Number(item.preco)), 0);
-    const custoTotalLote = carrinho.reduce((acc, item) => acc + (item.qtd * obterCustoUnidadeProduto(item)), 0);
+    const custoTotalLote = carrinho.reduce((acc, item) => acc + (item.qtd * item.custoUnitario), 0);
     
-    // Calcular imposto apenas se emitir nota
-    let totalImposto = 0;
-    if (novaVenda.emiteNota === true) {
-      totalImposto = carrinho.reduce((acc, item) => {
-        const produto = produtosFinais.find(p => p.id === item.id);
-        const aliquota = produto?.imposto || 7.3;
-        return acc + (item.qtd * item.preco * (aliquota / 100));
-      }, 0);
-    }
+    const totalImposto = carrinho.reduce((acc, item) => {
+      const aliquota = item.aliquotaImposto ?? 0;
+      return acc + (item.qtd * item.preco * (aliquota / 100));
+    }, 0);
     
     const novoLancamento = {
       id: `v_${Date.now()}`,
@@ -194,7 +204,8 @@ export default function FormularioVendas({
         produtoId: item.id,
         nomeProduto: item.nome,
         quantidade: item.qtd,
-        precoUnitario: Number(item.preco)
+        precoUnitario: Number(item.preco),
+        aliquotaImposto: item.aliquotaImposto
       })),
       totalVenda,
       custoTotalLote,
@@ -210,6 +221,7 @@ export default function FormularioVendas({
         dataRecebimento: "",
       });
       setBuscaClienteText("");
+      setClienteSelecionadoObj(null);
       mostrarToast("Venda registrada com sucesso!", 'success');
     } catch (error) {
       console.error('Erro ao salvar venda:', error);
@@ -247,15 +259,10 @@ export default function FormularioVendas({
       return acc;
     }, 0);
     
-    // Calcular imposto apenas se emitir nota
-    let totalImposto = 0;
-    if (vendaEmEdicao.emiteNota === true) {
-      totalImposto = vendaEmEdicao.itens.reduce((acc, item) => {
-        const produto = produtosFinais.find(p => p.id === item.produtoId);
-        const aliquota = produto?.imposto || 7.3;
-        return acc + (item.quantidade * item.precoUnitario * (aliquota / 100));
-      }, 0);
-    }
+    const totalImposto = vendaEmEdicao.itens.reduce((acc, item) => {
+      const aliquota = item.aliquotaImposto ?? 0;
+      return acc + (item.quantidade * item.precoUnitario * (aliquota / 100));
+    }, 0);
     
     const vendaAtualizada = {
       ...vendaEmEdicao,
@@ -277,15 +284,12 @@ export default function FormularioVendas({
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '32px' }}>
-      {/* Formulário de lançamento */}
       <div style={{ backgroundColor: '#fff', border: '1px solid #e2d5c0', borderRadius: '16px', padding: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
         <h3 style={{ color: '#6a2402', marginTop: 0, marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.2rem' }}>
           <ShoppingCart size={22} color="#f4890f" /> Registrar Novo Pedido Comercial
         </h3>
         <form onSubmit={handleSalvarVenda}>
-          {/* Dados do cliente */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
-            {/* Campo com busca digitável para Cliente */}
             <div style={{ flex: '1 1 280px', position: 'relative' }} ref={clienteDropdownRef}>
               <label style={labelStyle}>Cliente</label>
               <div style={{ position: 'relative' }}>
@@ -298,6 +302,7 @@ export default function FormularioVendas({
                     setMostrarDropdownCliente(true);
                     if (!e.target.value) {
                       setNovaVenda(prev => ({ ...prev, clienteId: "" }));
+                      setClienteSelecionadoObj(null);
                     }
                   }}
                   onFocus={() => setMostrarDropdownCliente(true)}
@@ -358,7 +363,17 @@ export default function FormularioVendas({
               <label style={labelStyle}>Documento Fiscal</label>
               <select
                 value={novaVenda.emiteNota ? "com_nota" : "sem_nota"}
-                onChange={(e) => setNovaVenda(prev => ({ ...prev, emiteNota: e.target.value === "com_nota" }))}
+                onChange={(e) => {
+                  const comNota = e.target.value === "com_nota";
+                  setNovaVenda(prev => ({ ...prev, emiteNota: comNota }));
+                  setCarrinho(prev => prev.map(item => {
+                    const prodRef = produtosFinais.find(p => p.id === item.id);
+                    return {
+                      ...item,
+                      aliquotaImposto: comNota ? (prodRef?.imposto ?? 7.3) : 0
+                    };
+                  }));
+                }}
                 style={inputStyle}
               >
                 <option value="sem_nota">Sem Nota</option>
@@ -391,7 +406,12 @@ export default function FormularioVendas({
             )}
           </div>
 
-          {/* Lista de produtos - visível e sem scroll */}
+          {clienteSelecionadoObj?.observacoes && (
+            <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: '#fff3cd', border: '1px solid #ffeeba', borderRadius: '8px', fontSize: '0.85rem', color: '#856404', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <AlertCircle size={18} /> <strong>Observação do Cliente:</strong> {clienteSelecionadoObj.observacoes}
+            </div>
+          )}
+
           <div style={{ marginBottom: '24px' }}>
             <label style={labelStyle}>Selecione os produtos:</label>
             <div style={{
@@ -402,7 +422,7 @@ export default function FormularioVendas({
               borderRadius: '12px',
               padding: '16px',
               background: '#fefcf8',
-              maxWidth: '600px',
+              maxWidth: '650px',
             }}>
               {produtosFinais.map(prod => (
                 <div key={prod.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '8px 4px', borderBottom: '1px solid #f0e6d5', flexWrap: 'wrap' }}>
@@ -415,15 +435,15 @@ export default function FormularioVendas({
                     placeholder="Qtd"
                     value={produtosSelecionados[prod.id]?.quantidade || ''}
                     onChange={(e) => handleQuantidadeChange(prod.id, e.target.value)}
-                    style={{ width: '80px', padding: '6px 8px', fontSize: '0.85rem', borderRadius: '6px', border: '1px solid #e2d5c0' }}
+                    style={{ width: '70px', padding: '6px 8px', fontSize: '0.85rem', borderRadius: '6px', border: '1px solid #e2d5c0' }}
                   />
                   <input
                     type="number"
                     step="0.01"
-                    placeholder="Preço especial"
+                    placeholder="Preço esp."
                     value={produtosSelecionados[prod.id]?.precoCustomizado || ''}
                     onChange={(e) => handlePrecoCustomizadoChange(prod.id, e.target.value)}
-                    style={{ width: '120px', padding: '6px 8px', fontSize: '0.85rem', borderRadius: '6px', border: '1px solid #e2d5c0' }}
+                    style={{ width: '100px', padding: '6px 8px', fontSize: '0.85rem', borderRadius: '6px', border: '1px solid #e2d5c0' }}
                   />
                 </div>
               ))}
@@ -439,20 +459,68 @@ export default function FormularioVendas({
             </button>
           </div>
 
-          {/* Carrinho */}
           {carrinho.length > 0 && (
             <div style={{ marginBottom: '24px', background: '#fef9f0', padding: '16px', borderRadius: '12px', border: '1px solid #e2d5c0' }}>
               <h4 style={{ margin: '0 0 12px 0', color: '#6a2402' }}>🛒 Itens no Carrinho</h4>
-              {carrinho.map((item, idx) => (
-                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #e2d5c0' }}>
-                  <span><strong>{item.nome}</strong> - Qtd: {item.qtd} - R$ {item.preco.toFixed(2)}/un</span>
-                  <span>Subtotal: R$ {(item.qtd * item.preco).toFixed(2)}</span>
-                  <button type="button" onClick={() => removerItemCarrinho(idx)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              ))}
-              <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '2px solid #e2d5c0', display: 'flex', justifyContent: 'flex-end', fontSize: '1.1rem', fontWeight: 'bold', color: '#6a2402' }}>
+              {carrinho.map((item, idx) => {
+                const aliquota = item.aliquotaImposto ?? 0;
+                const impostoUnitario = item.preco * (aliquota / 100);
+                const lucroUnitario = item.preco - item.custoUnitario - impostoUnitario;
+                const lucroTotalItem = lucroUnitario * item.qtd;
+
+                return (
+                  <div key={idx} style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'space-between', 
+                    padding: '12px 8px', 
+                    borderBottom: '1px solid #e2d5c0', 
+                    flexWrap: 'wrap', 
+                    gap: '16px',
+                    borderRadius: '8px',
+                    marginBottom: '8px',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+                  }}>
+                    <div style={{ minWidth: '180px', flex: '1 1 auto' }}>
+                      <strong style={{ color: '#351000', fontSize: '0.95rem' }}>{item.nome}</strong>
+                      <div style={{ fontSize: '0.8rem', color: '#8e6b49', marginTop: '2px' }}>
+                        Qtd: {item.qtd} &bull; R$ {item.preco.toFixed(2)}/un
+                      </div>
+                    </div>
+                    
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#4b342e' }}>Imposto (%):</span>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        value={item.aliquotaImposto}
+                        onChange={(e) => atualizarItemCarrinho(idx, 'aliquotaImposto', e.target.value)}
+                        style={{ width: '65px', padding: '6px', fontSize: '0.85rem', borderRadius: '6px', border: '1px solid #e2d5c0', textAlign: 'center', backgroundColor: '#fefcf8' }}
+                      />
+                    </div>
+
+                    <div style={{ textAlign: 'right', minWidth: '140px' }}>
+                      <div style={{ color: lucroUnitario >= 0 ? '#15803d' : '#b91c1c', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                        Lucro Est.: R$ {lucroTotalItem.toFixed(2)}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: '#8e6b49', marginTop: '2px' }}>
+                        Subtotal: R$ {(item.qtd * item.preco).toFixed(2)}
+                      </div>
+                    </div>
+
+                    <button 
+                      type="button" 
+                      onClick={() => removerItemCarrinho(idx)} 
+                      style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      title="Remover item"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
+                );
+              })}
+              <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '2px solid #e2d5c0', display: 'flex', justifyContent: 'flex-end', fontSize: '1.1rem', fontWeight: 'bold', color: '#6a2402' }}>
                 Total do Carrinho: R$ {carrinho.reduce((acc, item) => acc + (item.qtd * item.preco), 0).toFixed(2)}
               </div>
             </div>
@@ -464,12 +532,10 @@ export default function FormularioVendas({
         </form>
       </div>
 
-      {/* Histórico de lançamentos */}
       <div>
         <div style={{ marginBottom: '16px', display: 'flex', gap: '16px', alignItems: 'center' }}>
           <input
-            type="date"
-            placeholder="Filtrar por data"
+            type="month"
             value={filtroData}
             onChange={(e) => setFiltroData(e.target.value)}
             style={{ ...inputStyle, width: '180px' }}
@@ -497,7 +563,7 @@ export default function FormularioVendas({
             </thead>
             <tbody>
               {vendasFiltradas.length === 0 ? (
-                <tr><td colSpan="5" style={{ padding: '30px', textAlign: 'center', color: '#8e6b49' }}>Nenhuma venda registrada.</td></tr>
+                <tr><td colSpan="5" style={{ padding: '30px', textAlign: 'center', color: '#8e6b49' }}>Nenhuma venda registrada para este período.</td></tr>
               ) : (
                 vendasFiltradas.map(v => (
                   <tr key={v.id} style={{ borderBottom: '1px solid #e2d5c0' }}>
@@ -534,7 +600,6 @@ export default function FormularioVendas({
         </div>
       </div>
 
-      {/* Modal de Detalhes */}
       {vendaSelecionada && (
         <div style={modalOverlayStyle}>
           <div style={modalContentStyle}>
@@ -549,12 +614,12 @@ export default function FormularioVendas({
               <p><strong>Produtos:</strong></p>
               <ul style={{ marginLeft: '20px', marginBottom: '12px' }}>
                 {vendaSelecionada.itens?.map((item, idx) => (
-                  <li key={idx}>{item.nomeProduto} - {item.quantidade} un - R$ {item.precoUnitario.toFixed(2)} (subtotal: R$ {(item.quantidade * item.precoUnitario).toFixed(2)})</li>
+                  <li key={idx}>{item.nomeProduto} - {item.quantidade} un - R$ {item.precoUnitario.toFixed(2)} (Imposto: {item.aliquotaImposto ?? 0}%)</li>
                 ))}
               </ul>
               <p><strong>Faturamento:</strong> R$ {vendaSelecionada.totalVenda.toFixed(2)}</p>
               <p><strong>Custo Total:</strong> R$ {vendaSelecionada.custoTotalLote.toFixed(2)}</p>
-              <p><strong>Margem Bruta:</strong> R$ {vendaSelecionada.lucroBrutoTotal.toFixed(2)}</p>
+              <p><strong>Margem Bruta Real:</strong> R$ {vendaSelecionada.lucroBrutoTotal.toFixed(2)}</p>
               <p><strong>Documento Fiscal:</strong> {vendaSelecionada.emiteNota ? 'Com NFe' : 'Sem NFe'}</p>
               <p><strong>Forma de Pagamento:</strong> {vendaSelecionada.formaPagamento}</p>
               <p><strong>Data Recebimento:</strong> {vendaSelecionada.dataRecebimento || 'Não definida'}</p>
@@ -564,7 +629,6 @@ export default function FormularioVendas({
         </div>
       )}
 
-      {/* Modal de Edição */}
       {vendaEmEdicao && (
         <div style={modalOverlayStyle}>
           <div style={{ ...modalContentStyle, maxWidth: '700px' }}>
@@ -656,7 +720,19 @@ export default function FormularioVendas({
                           novosItens[idx].precoUnitario = parseFloat(e.target.value) || 0;
                           setVendaEmEdicao(prev => ({ ...prev, itens: novosItens }));
                         }}
-                        style={{ width: '100px', padding: '4px 8px', borderRadius: '6px', border: '1px solid #e2d5c0' }}
+                        style={{ width: '90px', padding: '4px 8px', borderRadius: '6px', border: '1px solid #e2d5c0' }}
+                      />
+                      <input
+                        type="number"
+                        step="0.1"
+                        placeholder="Imposto %"
+                        value={item.aliquotaImposto ?? 7.3}
+                        onChange={(e) => {
+                          const novosItens = [...vendaEmEdicao.itens];
+                          novosItens[idx].aliquotaImposto = parseFloat(e.target.value) || 0;
+                          setVendaEmEdicao(prev => ({ ...prev, itens: novosItens }));
+                        }}
+                        style={{ width: '80px', padding: '4px 8px', borderRadius: '6px', border: '1px solid #e2d5c0' }}
                       />
                     </div>
                   ))}
@@ -671,7 +747,6 @@ export default function FormularioVendas({
         </div>
       )}
 
-      {/* Toast Notification */}
       {toast && (
         <div style={{
           position: 'fixed',
@@ -683,7 +758,6 @@ export default function FormularioVendas({
           borderRadius: '8px',
           boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
           zIndex: 2000,
-          animation: 'slideIn 0.3s ease-out',
           fontWeight: '500'
         }}>
           {toast.mensagem}
@@ -693,7 +767,6 @@ export default function FormularioVendas({
   );
 }
 
-// Estilos centralizados
 const inputStyle = {
   width: '100%',
   padding: '8px 12px',

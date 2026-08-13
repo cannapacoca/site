@@ -140,41 +140,37 @@ export default function TabelaProdutos({
         </thead>
         <tbody>
           {produtosFinais.map(prod => {
+            // Busca a receita vinculada ao produto
+            const receitaObj = receitas.find(r => r.id === prod.receitaId);
+
             const custoKgMassa = calcularPrecoKgMassa(prod.receitaId, materiais, receitas);
             const custoMateriaPrima = (prod.pesoG / 1000) * custoKgMassa;
             
-            const mapearId = (id) => {
-              if (id === 'emb_cristal_15') return 'emb_1';
-              if (id === 'emb_cristal_12') return 'emb_2';
-              if (id === 'emb_pp_12_25') return 'emb_3';
-              if (id === 'emb_pp_12_20') return 'emb_4';
-              if (id === 'emb_pote') return 'emb_5';
-              if (id === 'emb_pote_menor') return 'emb_6';
-              if (id === 'rot_pacoca') return 'rot_2';
-              if (id === 'rot_amendoim') return 'rot_1';
-              return id;
-            };
+            // 1. Soma o custo de TODAS as embalagens cadastradas na receita
+            const custoTotalEmbalagens = (receitaObj?.embalagens || []).reduce((total, emb) => {
+              const itemMat = materiais.find(m => m.id === emb.materialId);
+              const custoUnit = itemMat ? obterCustoUnitarioItem(itemMat) : 0;
+              return total + (custoUnit * (parseFloat(emb.qtd) || 1));
+            }, 0);
 
-            const embItem = materiais.find(m => m.id === mapearId(prod.embId));
-            const rotItem = materiais.find(m => m.id === mapearId(prod.rotId));
-            const lacreItem = materiais.find(m => m.id === 'emb_7');
+            // 2. Soma o custo de TODOS os rótulos cadastrados na receita
+            const custoTotalRotulos = (receitaObj?.rotulos || []).reduce((total, rot) => {
+              const itemMat = materiais.find(m => m.id === rot.materialId);
+              const custoUnit = itemMat ? obterCustoUnitarioItem(itemMat) : 0;
+              return total + (custoUnit * (parseFloat(rot.qtd) || 1));
+            }, 0);
 
-            const vEmb = embItem ? obterCustoUnitarioItem(embItem) : 0;
-            const vRot = rotItem ? obterCustoUnitarioItem(rotItem) : 0;
-            const precisaLacre = prod.id === 'p3' || prod.id === 'p5' || prod.embId?.includes('pote');
-            const vLacre = precisaLacre && lacreItem ? obterCustoUnitarioItem(lacreItem) : 0;
-
-            // 1. Custo dos Insumos
-            const custoInsumos = custoMateriaPrima + vEmb + vRot + vLacre;
+            // 3. Custo total dos Insumos (Massa + Embalagens + Rótulos)
+            const custoInsumos = custoMateriaPrima + custoTotalEmbalagens + custoTotalRotulos;
             
-            // 2. Cálculo do Imposto sobre o Preço Base (Venda)
+            // 4. Cálculo do Imposto sobre o Preço Base (Venda)
             const aliquota = prod.imposto || 7.3;
             const valorImposto = (prod.venda || 0) * (aliquota / 100);
 
-            // 3. Custo Bruto com o Imposto adicionado
+            // 5. Custo Bruto Total
             const custoBrutoTotal = custoInsumos + valorImposto;
 
-            // 4. Lucro Real (Preço Base - Custo Bruto Total)
+            // 6. Lucro Real
             const lucroBrutoReal = (prod.venda || 0) - custoBrutoTotal;
 
             return (
@@ -182,8 +178,16 @@ export default function TabelaProdutos({
                 <td style={{ padding: '14px', fontWeight: 'bold', color: '#1e293b' }}>{prod.nome}</td>
                 <td style={{ padding: '14px' }}>{prod.pesoG}g</td>
                 <td style={{ padding: '14px', color: '#64748b' }}>R$ {custoMateriaPrima.toFixed(2)}</td>
-                <td style={{ padding: '14px', color: '#64748b' }}>R$ {vEmb.toFixed(2)}</td>
-                <td style={{ padding: '14px', color: '#64748b' }}>R$ {vRot.toFixed(2)}</td>
+                
+                {/* Exibe o total somado das embalagens da receita */}
+                <td style={{ padding: '14px', color: '#64748b' }} title="Total de embalagens da receita">
+                  R$ {custoTotalEmbalagens.toFixed(2)}
+                </td>
+
+                {/* Exibe o total somado dos rótulos da receita */}
+                <td style={{ padding: '14px', color: '#64748b' }} title="Total de rótulos da receita">
+                  R$ {custoTotalRotulos.toFixed(2)}
+                </td>
                 
                 {/* Preço Base */}
                 <td style={{ padding: '8px' }}>
@@ -196,7 +200,7 @@ export default function TabelaProdutos({
                   />
                 </td>
 
-                {/* Imposto % e Valor Calculado em R$ */}
+                {/* Imposto */}
                 <td style={{ padding: '8px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <input 
@@ -212,7 +216,7 @@ export default function TabelaProdutos({
                   </div>
                 </td>
 
-                {/* Custo Bruto (Insumos + Imposto) */}
+                {/* Custo Bruto */}
                 <td style={{ padding: '14px', fontWeight: 'bold', backgroundColor: '#f8fafc' }}>
                   R$ {custoBrutoTotal.toFixed(2)}
                 </td>

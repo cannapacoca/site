@@ -1,17 +1,20 @@
 import { supabase } from '../lib/supabase';
 
-// ingredientes no frontend é array, no banco é JSONB
 const toSnakeCase = (receita) => ({
   id: receita.id,
   nome: receita.nome,
   rendimento_kg: receita.rendimentoKg,
-  ingredientes: receita.ingredientes, // já é array de objetos
+  embalagens: receita.embalagens || [], // Array de IDs ou objetos de embalagem
+  rotulos: receita.rotulos || [],       // Array de IDs ou objetos de rótulo
+  ingredientes: receita.ingredientes,   // Array de ingredientes
 });
 
 const toCamelCase = (dbRec) => ({
   id: dbRec.id,
   nome: dbRec.nome,
   rendimentoKg: dbRec.rendimento_kg,
+  embalagens: dbRec.embalagens || [],
+  rotulos: dbRec.rotulos || [],
   ingredientes: dbRec.ingredientes,
 });
 
