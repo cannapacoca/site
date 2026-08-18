@@ -1,7 +1,7 @@
 // src/components/TabelaMateriais.jsx
 import React, { useState } from 'react';
 import { obterCustoUnitarioItem } from '../utils/pricingUtils';
-import { Trash2, Plus, Filter } from 'lucide-react';
+import { Trash2, Plus } from 'lucide-react';
 
 const defaultInputStyle = {
   width: '100%',
@@ -40,6 +40,7 @@ export default function TabelaMateriais({
     try {
       await onAddMaterial({
         ...novoMaterial,
+        tipo: novoMaterial.tipo || 'materia_prima',
         id: 'mat_' + Date.now(),
         precoCompra: parseFloat(novoMaterial.precoCompra) || 0,
         pesoCompra: parseFloat(novoMaterial.pesoCompra) || 0,
@@ -64,21 +65,25 @@ export default function TabelaMateriais({
   };
 
   const handleMaterialChange = async (id, campo, valor) => {
-    const novoValor = campo === 'nome' || campo === 'tipo' || campo === 'unidade' ? valor : (parseFloat(valor) || (valor === '' ? '' : valor));
-    
-    setMateriais(prev => prev.map(mat => 
-      mat.id === id ? { ...mat, [campo]: novoValor } : mat
-    ));
+    const isStringField = ['nome', 'tipo', 'unidade'].includes(campo);
+    const novoValor = isStringField ? valor : (parseFloat(valor) || (valor === '' ? '' : valor));
 
+    // 1. Encontra o material atual no estado
+    const materialAtual = materiais.find(m => m.id === id);
+    if (!materialAtual) return;
+
+    // 2. Cria o objeto atualizado IMEDIATAMENTE
+    const materialAtualizado = { ...materialAtual, [campo]: novoValor };
+
+    // 3. Atualiza a interface (estado local)
+    setMateriais(prev => prev.map(mat => (mat.id === id ? materialAtualizado : mat)));
+
+    // 4. Agora sim, chama a persistência no Supabase!
     try {
-      const updateData = { [campo]: novoValor };
-      await onUpdateMaterial(id, updateData);
+      await onUpdateMaterial(id, materialAtualizado);
     } catch (error) {
       console.error('Erro ao atualizar material:', error);
-      alert('Erro ao salvar alteração. Desfazendo...');
-      setMateriais(prev => prev.map(mat => 
-        mat.id === id ? { ...mat, [campo]: materiais.find(m => m.id === id)?.[campo] } : mat
-      ));
+      setMateriais(prev => prev.map(mat => (mat.id === id ? materialAtual : mat)));
     }
   };
 
@@ -192,7 +197,7 @@ export default function TabelaMateriais({
               </td>
               <td style={{ padding: '8px' }}>
                 <select
-                  value={mat.tipo || 'materia_prima'}
+                  value={mat.tipo}
                   onChange={(e) => handleMaterialChange(mat.id, 'tipo', e.target.value)}
                   style={inputStyle}
                 >

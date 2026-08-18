@@ -154,6 +154,7 @@ export const initialDataService = {
       pesoCompra: m.peso_compra,
       unidadesPacote: m.unidades_pacote,
       precoCompra: m.preco_compra,
+      tipo: m.tipo,
     }));
 
     const receitas = (receitasRaw.data || []).map(r => ({
@@ -161,6 +162,8 @@ export const initialDataService = {
       nome: r.nome,
       rendimentoKg: r.rendimento_kg,
       ingredientes: r.ingredientes,
+      embalagens: r.embalagens,
+      rotulos: r.rotulos,
     }));
 
     const produtosFinais = (produtosRaw.data || []).map(p => ({
@@ -168,8 +171,6 @@ export const initialDataService = {
       nome: p.nome,
       pesoG: p.peso_g,
       receitaId: p.receita_id,
-      embId: p.emb_id,
-      rotId: p.rot_id,
       venda: p.venda,
       imposto: p.imposto,
     }));

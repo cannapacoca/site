@@ -12,7 +12,7 @@ export default function TabelaProdutos({
   onAddProduto,
   onDeleteProduto
 }) {
-  const [novoProduto, setNovoProduto] = useState({ nome: '', pesoG: 500, receitaId: '', embId: '', rotId: '', imposto: 7.3, venda: 0 });
+  const [novoProduto, setNovoProduto] = useState({ nome: '', pesoG: 500, receitaId: '', imposto: 7.3, venda: 0 });
   const [showForm, setShowForm] = useState(false);
   
   const handleAddProduto = async () => {
@@ -28,7 +28,7 @@ export default function TabelaProdutos({
         imposto: parseFloat(novoProduto.imposto) || 7.3,
         venda: parseFloat(novoProduto.venda) || 0
       });
-      setNovoProduto({ nome: '', pesoG: 500, receitaId: '', embId: '', rotId: '', imposto: 7.3, venda: 0 });
+      setNovoProduto({ nome: '', pesoG: 500, receitaId: '', imposto: 7.3, venda: 0 });
       setShowForm(false);
     } catch (error) {
       console.error('Erro ao adicionar produto:', error);
@@ -100,20 +100,7 @@ export default function TabelaProdutos({
               {receitas.map(r => <option key={r.id} value={r.id}>{r.nome}</option>)}
             </select>
           </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.85em', marginBottom: '4px', color: '#64748b' }}>Embalagem</label>
-            <select value={novoProduto.embId} onChange={e => setNovoProduto({ ...novoProduto, embId: e.target.value })} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', width: '160px' }}>
-              <option value="">Selecione...</option>
-              {materiais.filter(m => m.id.startsWith('emb_')).map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
-            </select>
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.85em', marginBottom: '4px', color: '#64748b' }}>Rótulo</label>
-            <select value={novoProduto.rotId} onChange={e => setNovoProduto({ ...novoProduto, rotId: e.target.value })} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', width: '160px' }}>
-              <option value="">Selecione...</option>
-              {materiais.filter(m => m.id.startsWith('rot_')).map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
-            </select>
-          </div>
+          
           <button
             onClick={handleAddProduto}
             style={{ padding: '10px 16px', backgroundColor: '#28a745', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', height: '38px' }}

@@ -5,8 +5,6 @@ const toSnakeCase = (prod) => ({
   nome: prod.nome,
   peso_g: prod.pesoG,
   receita_id: prod.receitaId,
-  emb_id: prod.embId,
-  rot_id: prod.rotId,
   venda: prod.venda,
   imposto: prod.imposto || 7.3,
 });
@@ -16,8 +14,6 @@ const toCamelCase = (dbProd) => ({
   nome: dbProd.nome,
   pesoG: dbProd.peso_g,
   receitaId: dbProd.receita_id,
-  embId: dbProd.emb_id,
-  rotId: dbProd.rot_id,
   venda: dbProd.venda,
   imposto: dbProd.imposto,
   createdAt: dbProd.created_at,
