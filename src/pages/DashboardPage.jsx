@@ -317,11 +317,25 @@ export default function DashboardPage({
     const totalVendasMes = vendasMes.reduce((acc, v) => acc + v.totalVenda, 0);
     const totalLucroMes = vendasMes.reduce((acc, v) => acc + v.lucroBrutoTotal, 0);
 
-    const vendasAmendoimDoce = vendasMes.filter(v =>
-      v.itens?.some(item => item.nomeProduto?.includes('Amendoim Doce') || item.produtoId === 'p9')
-    );
-    const totalAmendoimDoce = vendasAmendoimDoce.reduce((acc, v) => acc + v.totalVenda, 0);
-    const totalLucroAmendoimDoce = vendasAmendoimDoce.reduce((acc, v) => acc + v.lucroBrutoTotal, 0);
+    let totalAmendoimDoce = 0;
+    let totalLucroAmendoimDoce = 0;
+
+    vendasMes.forEach(v => {
+      v.itens?.forEach(item => {
+        const ehAmendoim = 
+          item.nomeProduto?.toLowerCase().includes('amendoim doce') || 
+          item.produtoId === 'p9';
+
+        if (ehAmendoim) {
+          // Soma apenas o subtotal e lucro do item específico de Amendoim
+          const valorItem = item.subtotal || item.total || ((item.precoUnitario || item.preco || 0) * (item.quantidade || 1));
+          const lucroItem = item.lucroBruto || item.lucro || 0;
+
+          totalAmendoimDoce += valorItem;
+          totalLucroAmendoimDoce += lucroItem;
+        }
+      });
+    });
 
     const vendasNotaPrazo = vendasMes.filter(v =>
       v.emiteNota === true && v.formaPagamento === 'a_prazo'
